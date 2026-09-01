@@ -609,6 +609,20 @@ void StartSolving() {
     g_isSolving = true;
     SetAppBusyState(true);
     SetWindowTextW(g_hEditSolOutput, L"Solving with ATRS v2 Native Engine in background...");
+    if (g_hStaticStatus) {
+        SetWindowTextW(g_hStaticStatus,
+            L"Status          : RUNNING (Solving in background...)\n\n"
+            L"Strategy Chosen : Evaluating...\n"
+            L"Workers Used    : Active\n"
+            L"Elapsed Time    : Computing...\n"
+            L"States Evaluated: Exploring...\n"
+            L"States Pruned   : -\n"
+            L"Forced Decisions: -\n"
+            L"Comparisons     : -\n"
+            L"Peak Resident RAM: Active\n\n"
+            L"Engine Status   : Search in progress..."
+        );
+    }
 
     if (g_workerThread.joinable()) g_workerThread.join();
 

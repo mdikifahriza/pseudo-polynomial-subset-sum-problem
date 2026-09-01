@@ -515,9 +515,14 @@ public:
 
         bool strong_struct = check_strong_structure(inst);
 
-        // 3. High Structural Reducibility
+        // 3. High Structural Reducibility or Find All Mode with bounded Cardinality
         if (strong_struct && (reduction_ratio > 0.25 || inst.feasible_k_count <= 3)) {
             return (inst.A.size() > 40) ? StrategyType::TSEH2_Deep : StrategyType::TSEH1_Fast;
+        }
+
+        // Dedicated Find All Strategy Selection for Multisets & Duplicate Values
+        if (mode == SolveMode::FindAll && (inst.feasible_k_count <= 15 || inst.effective_target <= 200000ULL)) {
+            return (inst.A.size() > 50) ? StrategyType::TSEH2_Deep : StrategyType::TSEH1_Fast;
         }
 
         // 4. Deterministic MITM vs Schroeppel-Shamir Crossover
@@ -1287,10 +1292,12 @@ private:
                 }
 
                 if (mode == SolveMode::FindAll) {
+                    bool cap_reached = false;
                     for (const auto& nL : nodes_L) {
                         for (const auto& nR : nodes_R) {
                             if (stats.all_solutions.size() >= budget.max_solutions) {
                                 stats.status = SolverStatus::PartialSolutionCapped;
+                                cap_reached = true;
                                 break;
                             }
                             u32 m1 = S1[nL.i1].second;
@@ -1307,7 +1314,9 @@ private:
                             wit.sum = inst.effective_target;
                             stats.all_solutions.push_back(wit);
                         }
+                        if (cap_reached) break;
                     }
+                    if (cap_reached) break;
                 }
 
                 for (const auto& nL : nodes_L) {
