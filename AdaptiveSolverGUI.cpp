@@ -193,8 +193,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     ShowWindow(g_hWnd, nCmdShow);
     UpdateWindow(g_hWnd);
 
-    // Auto-load sample instance on startup
-    LoadSelectedPresetToSolver(0);
+    // Start with clean empty inputs on startup
+    UpdateInstanceMetadataDisplay(g_currentInstance);
 
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
@@ -323,7 +323,8 @@ void ParseCurrentInputs() {
     std::string s_tgt = GetControlTextDynamic(g_hEditTarget);
 
     if (s_elem.empty()) {
-        LoadSelectedPresetToSolver(0);
+        g_currentInstance = Instance();
+        UpdateInstanceMetadataDisplay(g_currentInstance);
         return;
     }
 
