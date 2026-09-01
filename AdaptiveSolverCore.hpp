@@ -688,9 +688,9 @@ private:
             size_t shift_words = val >> 6;
             size_t shift_bits = val & 63;
 
-            for (size_t w = words - 1; w >= shift_words; --w) {
+            for (int64_t w = (int64_t)words - 1; w >= (int64_t)shift_words; --w) {
                 u64 low = bs[w - shift_words] << shift_bits;
-                u64 high = (shift_bits > 0 && w > shift_words) ? (bs[w - shift_words - 1] >> (64 - shift_bits)) : 0;
+                u64 high = (shift_bits > 0 && w > (int64_t)shift_words) ? (bs[w - shift_words - 1] >> (64 - shift_bits)) : 0;
                 u64 shifted = low | high;
 
                 u64 new_bits = shifted & ~bs[w];
@@ -698,7 +698,7 @@ private:
 
                 while (new_bits != 0) {
                     int bit_idx = (int)__builtin_ctzll(new_bits);
-                    u64 sum = (w << 6) + bit_idx;
+                    u64 sum = ((u64)w << 6) + bit_idx;
                     if (sum <= T && parent[sum] == -1) {
                         parent[sum] = (int)idx;
                     }
