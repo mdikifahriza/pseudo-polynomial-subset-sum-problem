@@ -39,6 +39,8 @@ static const u64 INF64 = 0xFFFFFFFFFFFFFFFFULL;
 inline size_t get_current_peak_ram_bytes() {
 #if defined(_WIN32) || defined(_WIN64)
     PROCESS_MEMORY_COUNTERS pmc;
+    ZeroMemory(&pmc, sizeof(pmc));
+    pmc.cb = sizeof(PROCESS_MEMORY_COUNTERS);
     if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
         return (size_t)pmc.PeakWorkingSetSize;
     }
@@ -249,24 +251,23 @@ struct Instance {
     static Instance from_string(const std::string& text, u64 tgt) {
         Instance inst;
         inst.target = tgt;
-        std::stringstream ss(text);
-        std::string token;
-        while (std::getline(ss, token, '\n')) {
-            std::stringstream line_ss(token);
-            std::string item;
-            while (std::getline(line_ss, item, ',')) {
-                size_t start = item.find_first_not_of(" \t\r\n");
-                size_t end = item.find_last_not_of(" \t\r\n");
-                if (start != std::string::npos && end != std::string::npos) {
-                    std::string clean = item.substr(start, end - start + 1);
-                    if (!clean.empty()) {
-                        try {
-                            u64 val = std::stoull(clean);
-                            inst.raw_elements.push_back(val);
-                        } catch (...) {}
-                    }
-                }
+        std::string current;
+        for (char c : text) {
+            if (isdigit((unsigned char)c)) {
+                current += c;
+            } else if (!current.empty()) {
+                try {
+                    u64 val = std::stoull(current);
+                    inst.raw_elements.push_back(val);
+                } catch (...) {}
+                current.clear();
             }
+        }
+        if (!current.empty()) {
+            try {
+                u64 val = std::stoull(current);
+                inst.raw_elements.push_back(val);
+            } catch (...) {}
         }
         inst.normalize();
         return inst;
@@ -783,6 +784,10 @@ private:
 
         auto dfs = [&](auto& self, int i, u64 R) -> void {
             if (stop_flag || (solution_found && early_exit)) return;
+            if (mode == SolveMode::FindAll && stats.all_solutions.size() >= budget.max_solutions) {
+                stats.status = SolverStatus::PartialSolutionCapped;
+                return;
+            }
             stats.states_evaluated++;
             if (!check_resource_guard(stats.states_evaluated, budget, start_time, stats)) return;
 
@@ -1003,6 +1008,10 @@ private:
 
         auto dfs = [&](auto& self, int i, u64 R) -> void {
             if (stop_flag || (solution_found && early_exit)) return;
+            if (mode == SolveMode::FindAll && stats.all_solutions.size() >= budget.max_solutions) {
+                stats.status = SolverStatus::PartialSolutionCapped;
+                return;
+            }
             stats.states_evaluated++;
             if (!check_resource_guard(stats.states_evaluated, budget, start_time, stats)) return;
 

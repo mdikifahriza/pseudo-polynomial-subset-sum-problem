@@ -85,6 +85,7 @@ HFONT g_hFontMono = NULL;
 std::unique_ptr<AdaptiveExactSolver> g_solver;
 std::thread g_workerThread;
 std::atomic<bool> g_isSolving{false};
+std::mutex g_statsMutex;
 
 Instance g_currentInstance;
 ExecutionStats g_lastStats;
@@ -257,10 +258,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             else if (SendMessage(g_hRadioCountAll, BM_GETCHECK, 0, 0) == BST_CHECKED) mode = SolveMode::CountAll;
             else if (SendMessage(g_hRadioDecision, BM_GETCHECK, 0, 0) == BST_CHECKED) mode = SolveMode::DecisionOnly;
 
-            UpdateLiveTelemetryDisplay(g_lastStats, mode);
+            ExecutionStats stats_copy;
+            {
+                std::lock_guard<std::mutex> lock(g_statsMutex);
+                stats_copy = g_lastStats;
+            }
+
+            UpdateLiveTelemetryDisplay(stats_copy, mode);
 
             // Aktifkan tombol "Lihat Solusi" jika mode FindAll dan terdapat solusi
-            if (mode == SolveMode::FindAll && g_lastStats.has_solution && !g_lastStats.all_solutions.empty()) {
+            if (mode == SolveMode::FindAll && stats_copy.has_solution && !stats_copy.all_solutions.empty()) {
                 EnableWindow(g_hBtnViewSolutions, TRUE);
             } else {
                 EnableWindow(g_hBtnViewSolutions, FALSE);
@@ -629,14 +636,19 @@ void StartSolving() {
 
     Instance inst_copy = g_currentInstance;
     g_workerThread = std::thread([inst_copy, mode, req_workers, mem_limit]() {
+        ExecutionStats result;
         try {
-            g_lastStats = g_solver->run(inst_copy, mode, req_workers, mem_limit);
+            result = g_solver->run(inst_copy, mode, req_workers, mem_limit);
         } catch (const std::exception& ex) {
-            g_lastStats.message = std::string("Exception: ") + ex.what();
-            g_lastStats.solved = false;
+            result.message = std::string("Exception: ") + ex.what();
+            result.solved = false;
         } catch (...) {
-            g_lastStats.message = "Unknown error occurred.";
-            g_lastStats.solved = false;
+            result.message = "Unknown error occurred.";
+            result.solved = false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(g_statsMutex);
+            g_lastStats = std::move(result);
         }
         PostMessage(g_hWnd, WM_APP_SOLVE_FINISHED, 0, 0);
     });
