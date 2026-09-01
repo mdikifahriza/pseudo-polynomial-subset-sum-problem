@@ -35,12 +35,13 @@ try:
 except ImportError:
     HAS_MATPLOTLIB = False
 
+
 class ATRSApplication:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("ATRS — Adaptive Target-Remainder Solver")
-        self.root.geometry("1100x780")
-        self.root.minsize(920, 640)
+        self.root.title("ATRS — Adaptive Target-Remainder Solver for Subset Sum")
+        self.root.geometry("1120x800")
+        self.root.minsize(940, 660)
         self.root.configure(bg="#f8fafc")
 
         self.values: List[int] = []
@@ -67,7 +68,7 @@ class ATRSApplication:
 
         self._setup_style()
         self._create_widgets()
-        self._center_window(self.root, 1100, 780)
+        self._center_window(self.root, 1120, 800)
 
     def run(self):
         self.root.mainloop()
@@ -147,20 +148,20 @@ class ATRSApplication:
         main_frame = ttk.Frame(self.root, padding=12)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        input_card = ttk.LabelFrame(main_frame, text=" Parameter Masukan & Konfigurasi Algoritma ", padding=12)
+        input_card = ttk.LabelFrame(main_frame, text=" Input Parameters & Solver Configuration ", padding=12)
         input_card.pack(fill=tk.X, pady=(0, 8))
 
-        ttk.Label(input_card, text="Himpunan Elemen:", font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky="w", pady=3)
+        ttk.Label(input_card, text="Elements / Multiset:", font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky="w", pady=3)
         self.entry_values = ttk.Entry(input_card, font=("Consolas", 10))
         self.entry_values.grid(row=0, column=1, columnspan=4, sticky="ew", padx=(8, 8), pady=3)
         self.entry_values.insert(0, "3, 7, 11, 14, 18, 21, 26, 29, 34, 38, 45, 52, 59")
 
-        ttk.Label(input_card, text="Nilai Target:", font=("Segoe UI", 9, "bold")).grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Label(input_card, text="Target Sum (T):", font=("Segoe UI", 9, "bold")).grid(row=1, column=0, sticky="w", pady=4)
         self.entry_target = ttk.Entry(input_card, width=12, font=("Consolas", 10))
         self.entry_target.grid(row=1, column=1, sticky="w", padx=(8, 8), pady=4)
         self.entry_target.insert(0, "150")
 
-        ttk.Label(input_card, text="Algoritma:", font=("Segoe UI", 9, "bold")).grid(row=1, column=2, sticky="w", pady=4)
+        ttk.Label(input_card, text="Algorithm:", font=("Segoe UI", 9, "bold")).grid(row=1, column=2, sticky="w", pady=4)
         self.combo_algo = ttk.Combobox(
             input_card,
             values=list(self.solvers_map.keys()),
@@ -170,7 +171,7 @@ class ATRSApplication:
         self.combo_algo.grid(row=1, column=3, sticky="w", padx=(6, 8), pady=4)
         self.combo_algo.current(0)
 
-        ttk.Label(input_card, text="Mode Pencarian:", font=("Segoe UI", 9, "bold")).grid(row=1, column=4, sticky="w", pady=4)
+        ttk.Label(input_card, text="Search Mode:", font=("Segoe UI", 9, "bold")).grid(row=1, column=4, sticky="w", pady=4)
         self.combo_mode = ttk.Combobox(
             input_card,
             values=[m.value for m in SearchMode],
@@ -180,12 +181,12 @@ class ATRSApplication:
         self.combo_mode.grid(row=1, column=5, sticky="w", padx=(6, 4), pady=4)
         self.combo_mode.current(0)
 
-        ttk.Label(input_card, text="Batas Waktu (s):", font=("Segoe UI", 9)).grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Label(input_card, text="Timeout (s):", font=("Segoe UI", 9)).grid(row=2, column=0, sticky="w", pady=4)
         self.entry_timeout = ttk.Entry(input_card, width=8, font=("Consolas", 9))
         self.entry_timeout.grid(row=2, column=1, sticky="w", padx=(8, 8), pady=4)
         self.entry_timeout.insert(0, "30.0")
 
-        ttk.Label(input_card, text="Batas Memori (MB):", font=("Segoe UI", 9)).grid(row=2, column=2, sticky="w", pady=4)
+        ttk.Label(input_card, text="Memory Limit (MB):", font=("Segoe UI", 9)).grid(row=2, column=2, sticky="w", pady=4)
         self.entry_memory = ttk.Entry(input_card, width=8, font=("Consolas", 9))
         self.entry_memory.grid(row=2, column=3, sticky="w", padx=(6, 8), pady=4)
         self.entry_memory.insert(0, "512")
@@ -196,7 +197,7 @@ class ATRSApplication:
         ttk.Button(btn_box, text="🎲 Random Dataset", style="Secondary.TButton", command=self._open_random_dialog).pack(side=tk.LEFT, padx=3)
         self.btn_bench = ttk.Button(btn_box, text="🔬 Benchmark", style="Bench.TButton", command=self._open_benchmark_window)
         self.btn_bench.pack(side=tk.LEFT, padx=3)
-        self.btn_run = ttk.Button(btn_box, text="▶ Jalankan ATRS", style="Primary.TButton", command=self._start_calculation)
+        self.btn_run = ttk.Button(btn_box, text="▶ Run ATRS", style="Primary.TButton", command=self._start_calculation)
         self.btn_run.pack(side=tk.LEFT, padx=3)
 
         input_card.columnconfigure(1, weight=1)
@@ -207,12 +208,12 @@ class ATRSApplication:
         self.status_card = tk.Frame(dash_frame, bg="#ffffff", relief="solid", bd=1, padx=12, pady=8)
         self.status_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self.lbl_status = tk.Label(self.status_card, text="Status: Siap.", font=("Segoe UI", 10, "bold"), bg="#ffffff", fg="#334155")
+        self.lbl_status = tk.Label(self.status_card, text="Status: Ready.", font=("Segoe UI", 10, "bold"), bg="#ffffff", fg="#334155")
         self.lbl_status.pack(anchor="w")
 
         self.lbl_strategy = tk.Label(
             self.status_card,
-            text="Strategi ATRS: Arithmetic Bound -> Bitset DP (jika budget aman) -> MITM -> DFS Fallback",
+            text="Strategy Pipeline: Arithmetic Bound -> Bitset DP (if RAM budget allows) -> MITM -> DFS Fallback",
             font=("Segoe UI", 9),
             bg="#ffffff",
             fg="#64748b"
@@ -221,7 +222,7 @@ class ATRSApplication:
 
         self.lbl_validation = tk.Label(
             self.status_card,
-            text="Validasi: Belum dijalankan",
+            text="Validation: Not executed yet",
             font=("Segoe UI", 9, "italic"),
             bg="#ffffff",
             fg="#475569"
@@ -231,16 +232,16 @@ class ATRSApplication:
         btn_action_box = ttk.Frame(dash_frame)
         btn_action_box.pack(side=tk.RIGHT, padx=(10, 0))
 
-        self.btn_solutions = ttk.Button(btn_action_box, text="📋 Solusi (0)", style="Action.TButton", command=self._open_solutions_window, state="disabled")
+        self.btn_solutions = ttk.Button(btn_action_box, text="📋 Solutions (0)", style="Action.TButton", command=self._open_solutions_window, state="disabled")
         self.btn_solutions.pack(side=tk.TOP, fill=tk.X, pady=(0, 4))
 
-        self.btn_graph = ttk.Button(btn_action_box, text="📊 Grafik ATRS", style="Graph.TButton", command=self._open_graph_window, state="disabled")
+        self.btn_graph = ttk.Button(btn_action_box, text="📊 Charts", style="Graph.TButton", command=self._open_graph_window, state="disabled")
         self.btn_graph.pack(side=tk.TOP, fill=tk.X, pady=(0, 4))
 
-        self.btn_save = ttk.Button(btn_action_box, text="💾 Simpan TXT", style="Secondary.TButton", command=self._save_txt, state="disabled")
+        self.btn_save = ttk.Button(btn_action_box, text="💾 Save Report", style="Secondary.TButton", command=self._save_txt, state="disabled")
         self.btn_save.pack(side=tk.TOP, fill=tk.X)
 
-        stat_frame = ttk.LabelFrame(main_frame, text=" Telemetri Komputasi & Efisiensi Oracle ATRS ", padding=8)
+        stat_frame = ttk.LabelFrame(main_frame, text=" Compute Telemetry & Adaptive Oracle Efficiency ", padding=8)
         stat_frame.pack(fill=tk.BOTH, expand=True)
 
         self.stat_text = tk.Text(
@@ -270,22 +271,21 @@ class ATRSApplication:
             "========================================================================================\n"
             "  ATRS (Adaptive Target-Remainder Solver) — Exact Subset Sum Research Platform\n"
             "========================================================================================\n\n"
-            "Konsep Inti ATRS:\n"
-            "  1. State Formal: (i, r) mewakili pencarian remainder r dari suffix himpunan [a_i, ..., a_n].\n"
+            "Core Theoretical Foundations of ATRS:\n"
+            "  1. Formal State Space: (i, r) represents searching for remaining target r in suffix [a_i, ..., a_n].\n"
             "  2. Adaptive Feasibility Oracles:\n"
-            "     - Oracle A (Arithmetic & Bound) : O(1) Suffix Sum, GCD, Cardinality & Candidate check.\n"
-            "     - Oracle B (Bitset DP)         : Exact bitwise word DP dengan Memory Guard Anti-OOM.\n"
-            "     - Oracle C (Meet-in-the-Middle) : O(2^(d/2)) partisi eksak dengan state budget guard.\n"
-            "     - Oracle D (Target-Remainder DFS): Exact branch & bound dengan sound dead-state memo.\n"
-            "  3. Correctness Guaranteed:\n"
-            "     - Feasibility oracles hanya merespon FEASIBLE, INFEASIBLE, atau UNKNOWN.\n"
-            "     - UNKNOWN tidak pernah dianggap sebagai NO SOLUTION.\n"
+            "     - Oracle A (Arithmetic & Bound) : O(1) Suffix-Sum, Suffix-GCD, Cardinality & Candidate Pruning.\n"
+            "     - Oracle B (Bitset DP)         : Exact word-level DP with Guarded Memory Anti-OOM quota.\n"
+            "     - Oracle C (Meet-in-the-Middle) : O(2^(d/2)) exact partitioning with state budget guard.\n"
+            "     - Oracle D (Target-Remainder DFS): Exact branch & bound with sound dead-state memoization.\n"
+            "  3. Strict Soundness Guarantee:\n"
+            "     - Feasibility oracles return strictly FEASIBLE, INFEASIBLE, or UNKNOWN.\n"
+            "     - UNKNOWN is never treated as NO SOLUTION (prevents false negatives).\n"
             "  4. Anti-OOM & Resource Guard:\n"
-            "     - Sebelum mengalokasikan memori besar, ATRS mengestimasi biaya dan memeriksa budget.\n"
-            "     - Kasus angka triliunan (11-12 digit) tidak akan crash karena OOM.\n"
-            "  5. Exactness & Teori:\n"
-            "     - Worst-case theoretical complexity: Eksponensial (tidak mengklaim P=NP).\n"
-            "     - Validasi otomatis terhadap Brute Force untuk n <= 20.\n"
+            "     - Apriori cost estimation avoids allocating massive bitsets on multi-billion targets.\n"
+            "  5. Exactness & Complexity Transparency:\n"
+            "     - Worst-case theoretical complexity: Exponential (no P=NP claim).\n"
+            "     - Automated cross-validation against ground truth Brute Force for n <= 20.\n"
             "========================================================================================\n"
         )
         self.stat_text.config(state=tk.DISABLED)
@@ -298,12 +298,12 @@ class ATRSApplication:
             values = parse_input(self.entry_values.get())
             target = int(self.entry_target.get())
             if target <= 0:
-                raise ValueError("Target harus bilangan bulat positif.")
+                raise ValueError("Target sum must be a positive integer.")
 
             timeout = float(self.entry_timeout.get())
             mem_mb = float(self.entry_memory.get())
         except Exception as e:
-            messagebox.showerror("Kesalahan Input", str(e))
+            messagebox.showerror("Input Error", str(e))
             return
 
         mode_str = self.combo_mode.get()
@@ -320,8 +320,8 @@ class ATRSApplication:
         self.btn_solutions.config(state="disabled")
         self.btn_graph.config(state="disabled")
 
-        self.lbl_status.config(text=f"Status: Mengeksekusi {algo_name}... ⏳", fg="#d97706")
-        self.lbl_strategy.config(text=f"Memproses pencarian solusi di {self.total_cores} Core CPU.")
+        self.lbl_status.config(text=f"Status: Executing {algo_name}... ⏳", fg="#d97706")
+        self.lbl_strategy.config(text=f"Distributing task across {self.total_cores} CPU cores.")
 
         thread = threading.Thread(
             target=self._run_thread,
@@ -366,21 +366,21 @@ class ATRSApplication:
 
         sol_count = len(res.solutions)
         self.lbl_strategy.config(
-            text=f"Algoritma: {res.algorithm_name} | Waktu: {res.elapsed:.4f}s | Nodes: {res.stats.nodes:,} | Memori Peak: {res.stats.memory_peak_bytes / (1024*1024):.2f} MB"
+            text=f"Algorithm: {res.algorithm_name} | Elapsed: {res.elapsed:.4f}s | Nodes: {res.stats.nodes:,} | Peak RAM: {res.stats.memory_peak_bytes / (1024*1024):.2f} MB"
         )
 
         if val_report:
             if val_report["passed"]:
-                self.lbl_validation.config(text="Validasi vs Brute Force: ✅ PASSED (Exact Match)", fg="#15803d")
+                self.lbl_validation.config(text="Validation vs Brute Force: ✅ PASSED (Exact Match)", fg="#15803d")
             else:
-                self.lbl_validation.config(text=f"Validasi vs Brute Force: ❌ FAILED! ({val_report['error_msg']})", fg="#dc2626")
+                self.lbl_validation.config(text=f"Validation vs Brute Force: ❌ FAILED! ({val_report['error_msg']})", fg="#dc2626")
         else:
-            self.lbl_validation.config(text="Validasi vs Brute Force: (Dilewati untuk n > 20)", fg="#64748b")
+            self.lbl_validation.config(text="Validation vs Brute Force: (Omitted for n > 20)", fg="#64748b")
 
         self.btn_run.config(state="normal")
         self.btn_bench.config(state="normal")
         self.btn_save.config(state="normal")
-        self.btn_solutions.config(state="normal", text=f"📋 Solusi ({sol_count:,})")
+        self.btn_solutions.config(state="normal", text=f"📋 Solutions ({sol_count:,})")
         if HAS_MATPLOTLIB:
             self.btn_graph.config(state="normal")
 
@@ -391,7 +391,7 @@ class ATRSApplication:
         self.btn_run.config(state="normal")
         self.btn_bench.config(state="normal")
         messagebox.showerror("Error", err_msg)
-        self.lbl_status.config(text=f"Status: Gagal ({err_msg})", fg="#dc2626")
+        self.lbl_status.config(text=f"Status: Failed ({err_msg})", fg="#dc2626")
 
     def _render_detailed_stats(self):
         if not self.result:
@@ -402,41 +402,41 @@ class ATRSApplication:
         lines = []
 
         lines.append("=" * 86)
-        lines.append(f"  LAPORAN KOMPUTASI: {r.algorithm_name.upper()}")
+        lines.append(f"  COMPUTATIONAL RESEARCH REPORT: {r.algorithm_name.upper()}")
         lines.append("=" * 86)
-        lines.append(f"Status Exactness    : {r.status.value}")
-        lines.append(f"Himpunan (n={len(self.values)}) : {self.values}")
-        lines.append(f"Nilai Target        : {self.target:,}")
-        lines.append(f"Solusi Ditemukan    : {len(r.solutions):,}")
-        lines.append(f"Waktu Eksekusi      : {r.elapsed:.6f} detik")
-        lines.append(f"Memori Puncak (RAM) : {s.memory_peak_bytes / (1024*1024):.2f} MB")
-        lines.append(f"Dead States (Memo)  : {s.dead_states_peak:,}")
+        lines.append(f"Status / Exactness   : {r.status.value}")
+        lines.append(f"Multiset (n={len(self.values)}) : {self.values}")
+        lines.append(f"Target Sum (T)       : {self.target:,}")
+        lines.append(f"Satisfying Subsets   : {len(r.solutions):,}")
+        lines.append(f"Elapsed Time         : {r.elapsed:.6f} seconds")
+        lines.append(f"Peak Memory (RAM)    : {s.memory_peak_bytes / (1024*1024):.2f} MB")
+        lines.append(f"Peak Dead-States     : {s.dead_states_peak:,}")
         lines.append("")
 
         lines.append("-" * 86)
-        lines.append("METRIK POHON PENCARIAN & WORK UNITS")
+        lines.append("SEARCH TREE METRICS & WORK UNITS")
         lines.append("-" * 86)
-        lines.append(f"  • Nodes Dievaluasi          : {s.nodes:>16,}")
-        lines.append(f"  • Operasi Aritmatika        : {s.arithmetic:>16,}")
-        lines.append(f"  • Perbandingan (Comparisons): {s.comparisons:>16,}")
+        lines.append(f"  • Nodes Explored            : {s.nodes:>16,}")
+        lines.append(f"  • Arithmetic Operations     : {s.arithmetic:>16,}")
+        lines.append(f"  • Comparisons               : {s.comparisons:>16,}")
         lines.append(f"  • Bound Checks              : {s.bound_checks:>16,}")
-        lines.append(f"  • Total Cabang Dipangkas    : {s.pruned:>16,}")
+        lines.append(f"  • Branches Pruned           : {s.pruned:>16,}")
         lines.append(f"  • Total Work Units          : {s.work_units:>16,}")
         lines.append("")
 
         lines.append("-" * 86)
-        lines.append("RINCIAN PRUNING & BOUNDING")
+        lines.append("PRUNING & BOUNDING DECOMPOSITION")
         lines.append("-" * 86)
         lines.append(f"  • Memoization Hits          : {s.memo_hits:>16,}")
         lines.append(f"  • Upper Bound Prunes (Sum)  : {s.upper_prunes:>16,}")
         lines.append(f"  • Lower / Candidate Prunes  : {s.lower_prunes:>16,}")
-        lines.append(f"  • Suffix GCD Prunes         : {s.gcd_prunes:>16,}")
+        lines.append(f"  • Suffix GCD Divisibility   : {s.gcd_prunes:>16,}")
         lines.append(f"  • Cardinality Bound Prunes  : {s.cardinality_prunes:>16,}")
         lines.append(f"  • Oracle Feasibility Prunes : {s.oracle_prunes:>16,}")
         lines.append("")
 
         lines.append("-" * 86)
-        lines.append("DASHBOARD ADAPTIVE FEASIBILITY ORACLES")
+        lines.append("ADAPTIVE FEASIBILITY ORACLE DASHBOARD")
         lines.append("-" * 86)
         lines.append(f"{'Oracle':<16} {'Calls':>10} {'Feasible':>10} {'Infeasible':>12} {'Unknown':>10} {'Prunes':>10} {'Time (s)':>12}")
         lines.append("-" * 86)
@@ -452,12 +452,12 @@ class ATRSApplication:
 
         lines.append("")
         lines.append("=" * 86)
-        lines.append("ANALISIS TEORITIS KOMPLEKSITAS")
+        lines.append("THEORETICAL COMPLEXITY BENCHMARKS")
         lines.append("=" * 86)
-        lines.append("  • Worst-Case Theoretical Complexity : Eksponensial O(2^(n/2)) atau O(2^n)")
-        lines.append("  • Bitset DP Complexity               : Pseudo-polinomial O(n * Target)")
-        lines.append("  • MITM Complexity                   : Eksponensial terhadap suffix length O(2^(d/2))")
-        lines.append("  • ATRS Adaptive Property            : Instance-dependent deterministik tanpa klaim P=NP")
+        lines.append("  • Theoretical Worst-Case   : Exponential O(2^(n/2)) or O(2^n)")
+        lines.append("  • Bitset DP Complexity     : Pseudo-polynomial O(n * Target)")
+        lines.append("  • MITM Complexity          : Suffix-bounded sub-exponential O(2^(d/2))")
+        lines.append("  • ATRS Adaptive Property   : Dynamic instance-dependent pruning without P=NP claim")
 
         self.stat_text.config(state=tk.NORMAL)
         self.stat_text.delete("1.0", tk.END)
@@ -470,34 +470,39 @@ class ATRSApplication:
             return
 
         self.rand_window = tk.Toplevel(self.root)
-        self.rand_window.title("Generator Dataset Acak")
-        self.rand_window.geometry("420x320")
+        self.rand_window.title("Random Dataset Generator")
+        self.rand_window.geometry("450x360")
         self.rand_window.configure(bg="#f8fafc")
 
         hdr = tk.Frame(self.rand_window, bg="#0f172a", padx=14, pady=10)
         hdr.pack(fill=tk.X)
-        tk.Label(hdr, text="Generate Problem Instance", font=("Segoe UI", 10, "bold"), bg="#0f172a", fg="#ffffff").pack(anchor="w")
+        tk.Label(hdr, text="Generate Subset Sum Instance", font=("Segoe UI", 10, "bold"), bg="#0f172a", fg="#ffffff").pack(anchor="w")
 
         f = ttk.Frame(self.rand_window, padding=14)
         f.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(f, text="Jumlah Elemen (n):").grid(row=0, column=0, sticky="w", pady=4)
-        e_n = ttk.Entry(f, width=10)
+        ttk.Label(f, text="Number of Elements (n):").grid(row=0, column=0, sticky="w", pady=4)
+        e_n = ttk.Entry(f, width=12)
         e_n.grid(row=0, column=1, sticky="w", pady=4)
         e_n.insert(0, "24")
 
-        ttk.Label(f, text="Nilai Minimum:").grid(row=1, column=0, sticky="w", pady=4)
-        e_min = ttk.Entry(f, width=10)
+        ttk.Label(f, text="Minimum Element Value:").grid(row=1, column=0, sticky="w", pady=4)
+        e_min = ttk.Entry(f, width=12)
         e_min.grid(row=1, column=1, sticky="w", pady=4)
         e_min.insert(0, "10")
 
-        ttk.Label(f, text="Nilai Maksimum:").grid(row=2, column=0, sticky="w", pady=4)
-        e_max = ttk.Entry(f, width=10)
+        ttk.Label(f, text="Maximum Element Value:").grid(row=2, column=0, sticky="w", pady=4)
+        e_max = ttk.Entry(f, width=12)
         e_max.grid(row=2, column=1, sticky="w", pady=4)
         e_max.insert(0, "500")
 
-        ttk.Label(f, text="Tipe Target:").grid(row=3, column=0, sticky="w", pady=4)
-        cb_mode = ttk.Combobox(f, values=["Random", "Guaranteed Solvable", "Guaranteed Unsolvable"], state="readonly", width=20)
+        ttk.Label(f, text="Instance Regime:").grid(row=3, column=0, sticky="w", pady=4)
+        cb_mode = ttk.Combobox(
+            f,
+            values=["Random", "Guaranteed Solvable", "Guaranteed Unsolvable", "Hard Density", "Large GCD"],
+            state="readonly",
+            width=22
+        )
         cb_mode.grid(row=3, column=1, sticky="w", pady=4)
         cb_mode.current(1)
 
@@ -516,8 +521,8 @@ class ATRSApplication:
             except Exception as ex:
                 messagebox.showerror("Error", str(ex))
 
-        ttk.Button(f, text="🎲 Buat Instance", style="Primary.TButton", command=do_generate).grid(row=4, column=0, columnspan=2, pady=(16, 0))
-        self._center_window(self.rand_window, 420, 320)
+        ttk.Button(f, text="🎲 Generate Instance", style="Primary.TButton", command=do_generate).grid(row=4, column=0, columnspan=2, pady=(16, 0))
+        self._center_window(self.rand_window, 450, 360)
 
     def _open_benchmark_window(self):
         if self.bench_window and self.bench_window.winfo_exists():
@@ -532,46 +537,51 @@ class ATRSApplication:
             return
 
         self.bench_window = tk.Toplevel(self.root)
-        self.bench_window.title("Benchmark Algoritma Subset Sum")
-        self.bench_window.geometry("900x560")
-        self.bench_window.minsize(700, 450)
+        self.bench_window.title("Subset Sum Algorithm Benchmark Suite")
+        self.bench_window.geometry("940x580")
+        self.bench_window.minsize(740, 460)
         self.bench_window.configure(bg="#f8fafc")
 
         hdr = tk.Frame(self.bench_window, bg="#d97706", padx=14, pady=10)
         hdr.pack(fill=tk.X)
-        tk.Label(hdr, text="🔬 ATRS Research Benchmark Suite", font=("Segoe UI", 11, "bold"), bg="#d97706", fg="#ffffff").pack(anchor="w")
-        tk.Label(hdr, text=f"Target: {target:,} | n: {len(values)} elemen", font=("Segoe UI", 9), bg="#d97706", fg="#fef3c7").pack(anchor="w")
+        tk.Label(hdr, text="🔬 ATRS Comparative Research Benchmark Suite", font=("Segoe UI", 11, "bold"), bg="#d97706", fg="#ffffff").pack(anchor="w")
+        tk.Label(hdr, text=f"Target: {target:,} | n: {len(values)} elements", font=("Segoe UI", 9), bg="#d97706", fg="#fef3c7").pack(anchor="w")
 
         tb = tk.Frame(self.bench_window, bg="#f8fafc", padx=12, pady=6)
         tb.pack(fill=tk.X)
 
-        btn_run_b = ttk.Button(tb, text="▶ Mulai Benchmark", style="Primary.TButton")
+        btn_run_b = ttk.Button(tb, text="▶ Run Benchmark", style="Primary.TButton")
         btn_run_b.pack(side=tk.LEFT, padx=(0, 6))
 
-        btn_export = ttk.Button(tb, text="📊 Ekspor CSV", style="Secondary.TButton")
-        btn_export.pack(side=tk.LEFT)
+        btn_export_csv = ttk.Button(tb, text="📊 Export CSV", style="Secondary.TButton")
+        btn_export_csv.pack(side=tk.LEFT, padx=(0, 6))
 
-        lbl_b_status = tk.Label(tb, text="Klik 'Mulai Benchmark' untuk menguji semua algoritma.", font=("Segoe UI", 9), bg="#f8fafc", fg="#64748b")
+        btn_export_latex = ttk.Button(tb, text="📄 Export LaTeX Table", style="Secondary.TButton")
+        btn_export_latex.pack(side=tk.LEFT)
+
+        lbl_b_status = tk.Label(tb, text="Click 'Run Benchmark' to evaluate all baseline solvers.", font=("Segoe UI", 9), bg="#f8fafc", fg="#64748b")
         lbl_b_status.pack(side=tk.RIGHT)
 
         tree_frame = tk.Frame(self.bench_window, padx=12, pady=6, bg="#f8fafc")
         tree_frame.pack(fill=tk.BOTH, expand=True)
 
-        cols = ("algorithm", "status", "time_sec", "nodes", "memory_mb", "solutions", "exact")
+        cols = ("algorithm", "status", "time_sec", "nodes", "prunes", "memory_mb", "solutions", "exact")
         tree = ttk.Treeview(tree_frame, columns=cols, show="headings")
-        tree.heading("algorithm", text="Algoritma")
+        tree.heading("algorithm", text="Algorithm")
         tree.heading("status", text="Status")
-        tree.heading("time_sec", text="Waktu (s)")
+        tree.heading("time_sec", text="Time (s)")
         tree.heading("nodes", text="Nodes")
-        tree.heading("memory_mb", text="Memori (MB)")
-        tree.heading("solutions", text="Solusi")
+        tree.heading("prunes", text="Pruned")
+        tree.heading("memory_mb", text="RAM (MB)")
+        tree.heading("solutions", text="Solutions")
         tree.heading("exact", text="Exact?")
 
         tree.column("algorithm", width=220)
-        tree.column("status", width=180)
+        tree.column("status", width=160)
         tree.column("time_sec", width=90, anchor="e")
-        tree.column("nodes", width=100, anchor="e")
-        tree.column("memory_mb", width=90, anchor="e")
+        tree.column("nodes", width=90, anchor="e")
+        tree.column("prunes", width=90, anchor="e")
+        tree.column("memory_mb", width=80, anchor="e")
         tree.column("solutions", width=70, anchor="e")
         tree.column("exact", width=60, anchor="center")
 
@@ -580,11 +590,11 @@ class ATRSApplication:
         tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         tree.pack(fill=tk.BOTH, expand=True)
 
-        bench_records = []
+        bench_records: List[Dict[str, Any]] = []
 
         def run_bench():
             btn_run_b.config(state="disabled")
-            lbl_b_status.config(text="Sedang menjalankan benchmark... ⏳")
+            lbl_b_status.config(text="Executing benchmark suite... ⏳")
             for item in tree.get_children():
                 tree.delete(item)
 
@@ -601,34 +611,55 @@ class ATRSApplication:
                             r["status"],
                             f"{r['time_sec']:.4f}",
                             f"{r['nodes']:,}",
+                            f"{r['prunes']:,}",
                             f"{r['memory_mb']:.2f}",
                             f"{r['solutions']:,}",
                             "✓" if r["exact"] else "✗"
                         ))
                     btn_run_b.config(state="normal")
-                    lbl_b_status.config(text=f"Benchmark selesai ({len(recs)} algoritma).")
+                    lbl_b_status.config(text=f"Benchmark completed ({len(recs)} algorithms evaluated).")
 
                 self.root.after(0, on_done)
 
             threading.Thread(target=task, daemon=True).start()
 
-        def do_export():
+        def do_export_csv():
             if not bench_records:
-                messagebox.showinfo("Info", "Jalankan benchmark terlebih dahulu.")
+                messagebox.showinfo("Info", "Please execute the benchmark first.")
                 return
             path = filedialog.asksaveasfilename(
-                title="Ekspor Hasil Benchmark CSV",
+                title="Export Benchmark Results to CSV",
                 defaultextension=".csv",
                 filetypes=[("CSV File", "*.csv")],
-                initialfile=f"benchmark_subset_sum_n{len(values)}_T{target}.csv"
+                initialfile=f"benchmark_ssp_n{len(values)}_T{target}.csv"
             )
             if path:
                 BenchmarkRunner.export_csv(bench_records, path)
-                messagebox.showinfo("Sukses", f"Hasil benchmark berhasil disimpan:\n{path}")
+                messagebox.showinfo("Export Successful", f"Benchmark CSV saved to:\n{path}")
+
+        def do_export_latex():
+            if not bench_records:
+                messagebox.showinfo("Info", "Please execute the benchmark first.")
+                return
+            path = filedialog.asksaveasfilename(
+                title="Export Benchmark Results to LaTeX Table",
+                defaultextension=".tex",
+                filetypes=[("LaTeX File", "*.tex")],
+                initialfile=f"table_ssp_benchmark_n{len(values)}.tex"
+            )
+            if path:
+                tex_code = BenchmarkRunner.export_latex(
+                    bench_records,
+                    caption=f"Comparative Benchmark on Subset Sum ($n={len(values)}, T={target:,}$)",
+                    label=f"tab:ssp_bench_n{len(values)}"
+                )
+                Path(path).write_text(tex_code, encoding="utf-8")
+                messagebox.showinfo("Export Successful", f"LaTeX table saved to:\n{path}")
 
         btn_run_b.config(command=run_bench)
-        btn_export.config(command=do_export)
-        self._center_window(self.bench_window, 900, 560)
+        btn_export_csv.config(command=do_export_csv)
+        btn_export_latex.config(command=do_export_latex)
+        self._center_window(self.bench_window, 940, 580)
 
     def _open_solutions_window(self):
         if not self.result:
@@ -639,16 +670,16 @@ class ATRSApplication:
             return
 
         self.sol_window = tk.Toplevel(self.root)
-        self.sol_window.title("Daftar Solusi Subset Sum")
-        self.sol_window.geometry("720x560")
+        self.sol_window.title("Subset Sum Solution Inspector")
+        self.sol_window.geometry("760x580")
         self.sol_window.configure(bg="#f8fafc")
 
         hdr = tk.Frame(self.sol_window, bg="#0f766e", padx=16, pady=10)
         hdr.pack(fill=tk.X)
 
         sols = self.result.solutions
-        tk.Label(hdr, text=f"Solusi Ditemukan ({len(sols):,} Solusi)", font=("Segoe UI", 11, "bold"), bg="#0f766e", fg="#ffffff").pack(anchor="w")
-        tk.Label(hdr, text=f"Target: {self.target:,} | Algoritma: {self.result.algorithm_name}", font=("Segoe UI", 9), bg="#0f766e", fg="#ccfbf1").pack(anchor="w")
+        tk.Label(hdr, text=f"Satisfying Subsets Discovered ({len(sols):,} Subsets)", font=("Segoe UI", 11, "bold"), bg="#0f766e", fg="#ffffff").pack(anchor="w")
+        tk.Label(hdr, text=f"Target: {self.target:,} | Algorithm: {self.result.algorithm_name}", font=("Segoe UI", 9), bg="#0f766e", fg="#ccfbf1").pack(anchor="w")
 
         tb = tk.Frame(self.sol_window, bg="#f8fafc", padx=12, pady=6)
         tb.pack(fill=tk.X)
@@ -657,10 +688,23 @@ class ATRSApplication:
             lines = [f"{i}. {' + '.join(map(str, s))} = {self.target}" for i, s in enumerate(sols, 1)]
             self.root.clipboard_clear()
             self.root.clipboard_append("\n".join(lines))
-            messagebox.showinfo("Sukses", "Solusi disalin ke clipboard.")
+            messagebox.showinfo("Copied", "All solutions copied to clipboard.")
 
-        ttk.Button(tb, text="📋 Salin Semua ke Clipboard", command=copy_sols).pack(side=tk.LEFT)
-        ttk.Button(tb, text="Tutup", command=self.sol_window.destroy).pack(side=tk.RIGHT)
+        def export_sols_txt():
+            path = filedialog.asksaveasfilename(
+                title="Export Solutions to TXT",
+                defaultextension=".txt",
+                filetypes=[("Text File", "*.txt")],
+                initialfile=f"solutions_ssp_T{self.target}_n{len(self.values)}.txt"
+            )
+            if path:
+                lines = [f"{i}. {' + '.join(map(str, s))} = {self.target}" for i, s in enumerate(sols, 1)]
+                Path(path).write_text("\n".join(lines), encoding="utf-8")
+                messagebox.showinfo("Export Successful", f"Solutions saved to:\n{path}")
+
+        ttk.Button(tb, text="📋 Copy to Clipboard", command=copy_sols).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(tb, text="💾 Export TXT", command=export_sols_txt).pack(side=tk.LEFT)
+        ttk.Button(tb, text="Close", command=self.sol_window.destroy).pack(side=tk.RIGHT)
 
         text_f = tk.Frame(self.sol_window, padx=12, pady=6, bg="#f8fafc")
         text_f.pack(fill=tk.BOTH, expand=True)
@@ -672,17 +716,17 @@ class ATRSApplication:
         txt.pack(fill=tk.BOTH, expand=True)
 
         if not sols:
-            txt.insert(tk.END, "TIDAK ADA SOLUSI YANG MEMENUHI TARGET.\n")
+            txt.insert(tk.END, "NO SATISFYING SUBSET EXISTS FOR THE GIVEN TARGET.\n")
         else:
             limit = min(len(sols), 1000)
             for i in range(limit):
                 sol = sols[i]
                 txt.insert(tk.END, f"{i+1:>5}.  {' + '.join(map(str, sol))} = {self.target}\n")
             if len(sols) > limit:
-                txt.insert(tk.END, f"\n... dan {len(sols) - limit:,} solusi lainnya (Gunakan Ekspor TXT untuk lengkap).\n")
+                txt.insert(tk.END, f"\n... and {len(sols) - limit:,} additional solutions (Use Export TXT for complete list).\n")
 
         txt.config(state=tk.DISABLED)
-        self._center_window(self.sol_window, 720, 560)
+        self._center_window(self.sol_window, 760, 580)
 
     def _open_graph_window(self):
         if not HAS_MATPLOTLIB or not self.result:
@@ -693,17 +737,17 @@ class ATRSApplication:
             return
 
         self.graph_window = tk.Toplevel(self.root)
-        self.graph_window.title("Visualisasi Metrik & Efisiensi Oracle ATRS")
-        self.graph_window.geometry("920x620")
-        self.graph_window.minsize(750, 500)
+        self.graph_window.title("ATRS Metric & Oracle Telemetry Visualization")
+        self.graph_window.geometry("940x660")
+        self.graph_window.minsize(760, 520)
         self.graph_window.configure(bg="#f8fafc")
 
         hdr = tk.Frame(self.graph_window, bg="#6d28d9", padx=16, pady=10)
         hdr.pack(fill=tk.X)
-        tk.Label(hdr, text="Dashboard Visualisasi Komputasi & Oracle ATRS", font=("Segoe UI", 11, "bold"), bg="#6d28d9", fg="#ffffff").pack(anchor="w")
+        tk.Label(hdr, text="Computational Telemetry & Oracle Performance Dashboard", font=("Segoe UI", 11, "bold"), bg="#6d28d9", fg="#ffffff").pack(anchor="w")
 
-        container = tk.Frame(self.graph_window, bg="#ffffff", padx=8, pady=8)
-        container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        tb = tk.Frame(self.graph_window, bg="#f8fafc", padx=12, pady=6)
+        tb.pack(fill=tk.X)
 
         s = self.result.stats
         fig = Figure(figsize=(9, 5.5), dpi=100, facecolor="#ffffff")
@@ -712,35 +756,52 @@ class ATRSApplication:
         labels1 = ["Nodes", "Arith", "Comp", "Bound", "Pruned"]
         vals1 = [s.nodes, s.arithmetic, s.comparisons, s.bound_checks, s.pruned]
         ax1.bar(labels1, vals1, color=["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"])
-        ax1.set_title("Distribusi Work Units", fontsize=9, fontweight="bold")
+        ax1.set_title("Work Units Distribution", fontsize=9, fontweight="bold")
         ax1.grid(axis="y", linestyle="--", alpha=0.3)
 
         ax2 = fig.add_subplot(222)
         oracles = ["Arithmetic", "Bitset", "MITM", "DFS"]
         calls = [s.oracle_calls.get(o.lower(), 0) for o in oracles]
         ax2.bar(oracles, calls, color=["#06b6d4", "#3b82f6", "#8b5cf6", "#f97316"])
-        ax2.set_title("Panggilan Feasibility Oracle", fontsize=9, fontweight="bold")
+        ax2.set_title("Feasibility Oracle Invocations", fontsize=9, fontweight="bold")
         ax2.grid(axis="y", linestyle="--", alpha=0.3)
 
         ax3 = fig.add_subplot(223)
         prune_lbls = ["Upper", "Lower", "GCD", "Card", "Memo"]
         prune_vals = [s.upper_prunes, s.lower_prunes, s.gcd_prunes, s.cardinality_prunes, s.memo_hits]
         ax3.bar(prune_lbls, prune_vals, color=["#ec4899", "#f43f5e", "#eab308", "#6366f1", "#14b8a6"])
-        ax3.set_title("Kontribusi Pruning", fontsize=9, fontweight="bold")
+        ax3.set_title("Pruning Rule Contribution", fontsize=9, fontweight="bold")
         ax3.grid(axis="y", linestyle="--", alpha=0.3)
 
         ax4 = fig.add_subplot(224)
         times = [s.oracle_time.get(o.lower(), 0.0) * 1000 for o in oracles]
         ax4.bar(oracles, times, color=["#10b981", "#0284c7", "#7c3aed", "#ea580c"])
-        ax4.set_title("Waktu Eksekusi Oracle (ms)", fontsize=9, fontweight="bold")
+        ax4.set_title("Oracle Execution Time (ms)", fontsize=9, fontweight="bold")
         ax4.grid(axis="y", linestyle="--", alpha=0.3)
 
         fig.tight_layout(pad=2.0)
+
+        def save_plot():
+            path = filedialog.asksaveasfilename(
+                title="Save High-Resolution Plot",
+                defaultextension=".png",
+                filetypes=[("PNG Image", "*.png"), ("PDF Document", "*.pdf"), ("SVG Vector", "*.svg")],
+                initialfile=f"ATRS_plot_T{self.target}_n{len(self.values)}.png"
+            )
+            if path:
+                fig.savefig(path, dpi=300, bbox_inches="tight")
+                messagebox.showinfo("Export Successful", f"High-resolution figure saved to:\n{path}")
+
+        ttk.Button(tb, text="📷 Save Figure (PDF / PNG 300 DPI)", command=save_plot).pack(side=tk.LEFT)
+
+        container = tk.Frame(self.graph_window, bg="#ffffff", padx=8, pady=8)
+        container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
         canvas = FigureCanvasTkAgg(fig, master=container)
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        self._center_window(self.graph_window, 920, 620)
+        self._center_window(self.graph_window, 940, 660)
 
     def _save_txt(self):
         if not self.result:
@@ -755,27 +816,27 @@ class ATRSApplication:
         lines.append("=" * 86)
         lines.append(f"Algorithm           : {r.algorithm_name}")
         lines.append(f"Status              : {r.status.value}")
-        lines.append(f"Himpunan (n={len(self.values)}) : {self.values}")
-        lines.append(f"Nilai Target        : {self.target:,}")
-        lines.append(f"Solusi Ditemukan    : {len(r.solutions):,}")
-        lines.append(f"Waktu Komputasi     : {r.elapsed:.6f} detik")
-        lines.append(f"Memori Puncak       : {s.memory_peak_bytes / (1024*1024):.2f} MB")
+        lines.append(f"Multiset (n={len(self.values)}) : {self.values}")
+        lines.append(f"Target Sum (T)      : {self.target:,}")
+        lines.append(f"Solutions Found     : {len(r.solutions):,}")
+        lines.append(f"Elapsed Time        : {r.elapsed:.6f} s")
+        lines.append(f"Peak Memory (RAM)   : {s.memory_peak_bytes / (1024*1024):.2f} MB")
         lines.append("")
-        lines.append("TELEMETRI KOMPUTASI")
+        lines.append("COMPUTE TELEMETRY")
         lines.append("-" * 86)
-        lines.append(f"Nodes               : {s.nodes:,}")
-        lines.append(f"Aritmatika          : {s.arithmetic:,}")
+        lines.append(f"Nodes Explored      : {s.nodes:,}")
+        lines.append(f"Arithmetic Ops      : {s.arithmetic:,}")
         lines.append(f"Comparisons         : {s.comparisons:,}")
         lines.append(f"Bound Checks        : {s.bound_checks:,}")
-        lines.append(f"Pruned              : {s.pruned:,}")
-        lines.append(f"Work Units          : {s.work_units:,}")
-        lines.append(f"Upper Prunes        : {s.upper_prunes:,}")
-        lines.append(f"Lower Prunes        : {s.lower_prunes:,}")
-        lines.append(f"GCD Prunes          : {s.gcd_prunes:,}")
+        lines.append(f"Branches Pruned     : {s.pruned:,}")
+        lines.append(f"Total Work Units    : {s.work_units:,}")
+        lines.append(f"Upper Bound Prunes  : {s.upper_prunes:,}")
+        lines.append(f"Lower Bound Prunes  : {s.lower_prunes:,}")
+        lines.append(f"GCD Divisibility    : {s.gcd_prunes:,}")
         lines.append(f"Cardinality Prunes  : {s.cardinality_prunes:,}")
-        lines.append(f"Memo Hits           : {s.memo_hits:,}")
+        lines.append(f"Memoization Hits    : {s.memo_hits:,}")
         lines.append("")
-        lines.append("DASHBOARD ORACLE")
+        lines.append("ORACLE BREAKDOWN")
         lines.append("-" * 86)
         for name in ["arithmetic", "bitset", "mitm", "dfs"]:
             lines.append(
@@ -784,17 +845,17 @@ class ATRSApplication:
                 f"Time: {s.oracle_time.get(name, 0.0):.6f}s"
             )
         lines.append("")
-        lines.append("DAFTAR SOLUSI")
+        lines.append("SOLUTIONS LIST")
         lines.append("=" * 86)
         for i, sol in enumerate(r.solutions, 1):
             lines.append(f"{i:>5}. {' + '.join(map(str, sol))} = {self.target}")
 
         path = filedialog.asksaveasfilename(
-            title="Simpan Laporan Riset ATRS",
+            title="Save ATRS Research Report",
             defaultextension=".txt",
             filetypes=[("Text File", "*.txt")],
             initialfile=f"ATRS_report_T{self.target}_n{len(self.values)}.txt"
         )
         if path:
             Path(path).write_text("\n".join(lines), encoding="utf-8")
-            messagebox.showinfo("Sukses", f"Laporan berhasil disimpan di:\n{path}")
+            messagebox.showinfo("Success", f"Report successfully saved to:\n{path}")
