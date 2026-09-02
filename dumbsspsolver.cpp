@@ -197,7 +197,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     WNDCLASSEXW wcHelp = { sizeof(WNDCLASSEXW) };
     wcHelp.lpfnWndProc = HelpDialogWndProc;
     wcHelp.hInstance = hInstance;
-    wcHelp.lpszClassName = L"DumbSVPHelpClass";
+    wcHelp.lpszClassName = L"DumbSSPHelpClass";
     wcHelp.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     wcHelp.hCursor = LoadCursor(NULL, IDC_ARROW);
     wcHelp.hIcon = LoadIcon(NULL, IDI_APPLICATION);
@@ -205,7 +205,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
     g_hWnd = CreateWindowExW(
         0, L"AdaptiveSSPGUIClass",
-        L"dumb svp solver",
+        L"dumb ssp solver",
         WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
         CW_USEDEFAULT, CW_USEDEFAULT, 1180, 880,
         NULL, NULL, hInstance, NULL
@@ -990,7 +990,7 @@ void ExportAllSolutionsToTxt(HWND hWndParent) {
         }
 
         fout << "================================================================================\n";
-        fout << "DUMB SVP SOLVER — EKSPOR HASIL LENGKAP\n";
+        fout << "DUMB SSP SOLVER — EKSPOR HASIL LENGKAP\n";
         fout << "================================================================================\n";
         fout << "Target (T)                 : " << g_currentInstance.target << "\n";
         fout << "Total Elements (N)         : " << g_currentInstance.raw_elements.size() << " raw (" << g_currentInstance.A.size() << " positive active)\n";
@@ -1055,7 +1055,7 @@ void ExportAllSolutionsToTxt(HWND hWndParent) {
 LRESULT CALLBACK HelpDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE: {
-            HWND lbl = CreateWindowExW(0, L"STATIC", L"DUMB SVP SOLVER — COMPREHENSIVE ARCHITECTURAL & MATHEMATICAL GUIDE", WS_CHILD | WS_VISIBLE, 15, 12, 850, 22, hWnd, NULL, NULL, NULL);
+            HWND lbl = CreateWindowExW(0, L"STATIC", L"DUMB SSP SOLVER — COMPREHENSIVE ARCHITECTURAL & MATHEMATICAL GUIDE", WS_CHILD | WS_VISIBLE, 15, 12, 850, 22, hWnd, NULL, NULL, NULL);
             SendMessage(lbl, WM_SETFONT, (WPARAM)g_hFontTitle, TRUE);
 
             HWND hEditHelp = CreateWindowExW(
@@ -1068,7 +1068,7 @@ LRESULT CALLBACK HelpDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
             std::wstring help_text =
                 L"========================================================================================================================\r\n"
-                L"                          DUMB SVP SOLVER — COMPREHENSIVE ARCHITECTURAL & MATHEMATICAL GUIDE                            \r\n"
+                L"                          DUMB SSP SOLVER — COMPREHENSIVE ARCHITECTURAL & MATHEMATICAL GUIDE                            \r\n"
                 L"========================================================================================================================\r\n\r\n"
                 L"1. PROBLEM FORMULATION & THEORETICAL FOUNDATION\r\n"
                 L"------------------------------------------------------------------------------------------------------------------------\r\n"
@@ -1207,8 +1207,8 @@ void OpenHelpPopupWindow(HWND hParent) {
 
     g_hDlgHelp = CreateWindowExW(
         WS_EX_DLGMODALFRAME,
-        L"DumbSVPHelpClass",
-        L"Dumb SVP Solver — Comprehensive Architectural & Mathematical Guide",
+        L"DumbSSPHelpClass",
+        L"Dumb SSP Solver — Comprehensive Architectural & Mathematical Guide",
         WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
         CW_USEDEFAULT, CW_USEDEFAULT, 900, 680,
         hParent, NULL, GetModuleHandle(NULL), NULL
