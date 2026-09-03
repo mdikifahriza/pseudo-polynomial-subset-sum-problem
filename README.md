@@ -1,121 +1,121 @@
 # Dumb SSP Solver
 
-Exact solver untuk **Subset Sum Problem (SSP)** — mencari subset dari sekumpulan bilangan bulat positif yang jumlahnya persis sama dengan target `T`. Solver ini bersifat *adaptif*: memilih strategi/algoritma berbeda tergantung karakteristik instance (ukuran `N`, magnitude `T`, struktur data), lalu memverifikasi hasilnya secara independen (L7 Verifier).
+Exact solver for the **Subset Sum Problem (SSP)** — finds a subset of positive integers whose sum exactly equals a target `T`. This solver is *adaptive*: selecting different strategies/algorithms depending on instance characteristics (`N` size, `T` magnitude, data structure), then independently verifying the results (L7 Verifier).
 
 ---
 
-## 1. Arsitektur & Struktur File
+## 1. Architecture & File Structure
 
-| File | Peran |
+| File | Role |
 |---|---|
-| `dumbsspCore.hpp` | Core library — struktur data, strategy selector, dan seluruh solver (L1–L8) |
-| `dumbsspCli.cpp` → `dumbsspCli.exe` | CLI harness performa tinggi untuk terminal |
-| `dumbsspGui.cpp` → `dumbsspGui.exe` | Aplikasi desktop native Win32 |
-| `benchmark.txt` | 20 dataset benchmark bertahap, N=5 s/d N=100 |
-| `readme.md` | Dokumentasi ini |
+| `dumbsspCore.hpp` | Core library — data structures, strategy selector, and all solvers (L1–L8) |
+| `dumbsspCli.cpp` → `dumbsspCli.exe` | High-performance CLI harness for terminal |
+| `dumbsspGui.cpp` → `dumbsspGui.exe` | Native Win32 desktop application |
+| `benchmark.txt` | 20 staged benchmark datasets, N=5 to N=100 |
+| `README.md` | This documentation |
 
 ---
 
-## 2. v1 vs v2 — Apa Bedanya?
+## 2. v1 vs v2 — What's the Difference?
 
-**v1** dan **v2** adalah dua generasi engine yang sama-sama exact (selalu menghasilkan solusi tervalidasi 100% atau UNSAT terbukti — tidak pernah approximate), tapi v2 menambah beberapa lapisan optimisasi adaptif yang tidak ada di v1.
+**v1** and **v2** are two generations of the engine that are both exact (always producing a 100% validated solution or proven UNSAT — never approximate), but v2 adds several layers of adaptive optimization not present in v1.
 
-| Aspek | v1 | v2 |
+| Aspect | v1 | v2 |
 |---|---|---|
-| Deteksi struktur superincreasing | Tidak ada — semua kasus lewat DFS generik | **Ada** — dideteksi & dirutekan ke solver O(n) khusus |
-| Strategi DFS berat (`L4`) | `Hybrid Tail-Table + Pruned DFS` polos | `Hybrid Tail-Table + Pruned DFS (Block-Bound + Ordered)` — ditambah memoisasi *block-bound* dan heuristik urutan cabang |
-| Paralelisasi | Tidak ada, selalu single-thread | Root-split multi-thread untuk mode `findone` pada instance besar |
-| Batas RAM saat DFS berjalan | N/A (tidak butuh, karena tidak ada struktur memo) | **Tidak dibatasi** — `memory_limit_mb` hanya dipakai sekali di awal untuk ukuran tail-table, bukan dicek ulang selama pencarian |
-| RAM saat solve | Flat & predictable (~16–20 MB, hampir konstan berapa pun N) | Bisa flat kecil (~4–20 MB) **atau** melonjak ratusan MB, tergantung struktur instance |
+| Superincreasing structure detection | None — all cases go through generic DFS | **Present** — detected & routed to dedicated O(n) solver |
+| Heavy DFS strategy (`L4`) | Plain `Hybrid Tail-Table + Pruned DFS` | `Hybrid Tail-Table + Pruned DFS (Block-Bound + Ordered)` — adds *block-bound* memoization and branch ordering heuristics |
+| Parallelization | None, always single-threaded | Root-split multi-threading for `findone` mode on large instances |
+| RAM limit during active DFS | N/A (not needed, as there are no memo structures) | **Unbounded** — `memory_limit_mb` is only used once initially for tail-table sizing, not checked during search |
+| RAM during solve | Flat & predictable (~16–20 MB, almost constant regardless of N) | Can be small & flat (~4–20 MB) **or** spike to hundreds of MB, depending on instance structure |
 
 ---
 
-## 3. Perbedaan Kecepatan (berdasarkan hasil benchmark aktual)
+## 3. Speed Differences (Based on Actual Benchmark Results)
 
-Diuji pada tiga kategori instance berbeda:
+Tested on three distinct instance categories:
 
-### a) High-Density (angka kecil, N > 32)
-Kedua versi memilih strategi identik (**L3: Bitset DP**). Hasilnya **nyaris sama** — selisih di bawah margin noise, karena jalur kode di kategori ini tidak berubah antara v1 dan v2.
+### a) High-Density (small numbers, N > 32)
+Both versions select an identical strategy (**L3: Bitset DP**). The results are **virtually identical** — differences are within noise margin, as the code path in this category did not change between v1 and v2.
 
-### b) Superincreasing (tiap elemen > jumlah semua elemen di bawahnya)
-**v2 menang mutlak dan tanpa syarat.** v1 tetap memakai DFS generik (`L4`) meski instance-nya sebetulnya trivial, sedangkan v2 mendeteksi struktur ini dan langsung memakai `L1: Greedy Superincreasing (Exact O(n))`.
+### b) Superincreasing (each element > sum of all elements below it)
+**v2 wins decisively and unconditionally.** v1 still uses generic DFS (`L4`) even though the instance is actually trivial, whereas v2 detects this structure and directly uses `L1: Greedy Superincreasing (Exact O(n))`.
 
-| N | v1 (L4 generik) | v2 (L1 Greedy) | Speedup |
+| N | v1 (generic L4) | v2 (L1 Greedy) | Speedup |
 |---|---|---|---|
-| 35 | ~140 ms | ~0,03 ms | ~4.000x |
-| 45 | ~138 ms | ~0,03 ms | ~4.000x |
-| 55 | ~137 ms | ~0,04 ms | ~3.800x |
+| 35 | ~140 ms | ~0.03 ms | ~4,000x |
+| 45 | ~138 ms | ~0.03 ms | ~4,000x |
+| 55 | ~137 ms | ~0.04 ms | ~3,800x |
 
-RAM v2 juga ikut turun (~20 MB → ~4 MB) karena tidak perlu membangun tail-table sama sekali.
+v2 RAM also drops (~20 MB → ~4 MB) because it does not need to build a tail-table at all.
 
-### c) Heavy-Variation (angka besar 12–13 digit, N=45–85, struktur "flat")
-Di sinilah hasilnya **tidak konsisten satu arah**:
+### c) Heavy-Variation (large 12–13 digit numbers, N=45–85, "flat" structure)
+This is where the results are **not consistently one-way**:
 
-| N | v1 | v2 | Pemenang |
+| N | v1 | v2 | Winner |
 |---|---|---|---|
-| 45 | 3.341 ms / 20 MB | 4.641 ms / **193 MB** | **v1** (lebih cepat & jauh lebih hemat RAM) |
-| 50 | 3.674 ms / 20 MB | 427 ms / 32 MB | v2 (~8,6x lebih cepat) |
-| 65 | 4.676 ms / 20 MB | 2.468 ms / 99,8 MB | v2 (~1,9x lebih cepat, RAM naik 5x) |
-| 85 | 12.391 ms / 20 MB | 158 ms / 22 MB | v2 (~78x lebih cepat, RAM nyaris sama) |
+| 45 | 3.341 ms / 20 MB | 4.641 ms / **193 MB** | **v1** (faster & far more RAM-efficient) |
+| 50 | 3.674 ms / 20 MB | 427 ms / 32 MB | v2 (~8.6x faster) |
+| 65 | 4.676 ms / 20 MB | 2.468 ms / 99.8 MB | v2 (~1.9x faster, RAM increases 5x) |
+| 85 | 12.391 ms / 20 MB | 158 ms / 22 MB | v2 (~78x faster, RAM nearly identical) |
 
-**Kesimpulan kecepatan:** v2 **tidak menang telak secara universal**. Untuk kasus superincreasing, kemenangannya mutlak. Untuk kasus DFS berat, v2 *sering* jauh lebih cepat berkat pruning `Block-Bound` yang lebih agresif — tapi ada instance nyata (N=45 di atas) di mana v2 justru lebih lambat sekaligus jauh lebih boros memori dibanding v1.
-
----
-
-## 4. Tradeoff v2: RAM Bisa Meledak
-
-Fitur baru `Block-Bound` di v2 bekerja dengan mencatat state DFS `(kedalaman i, sisa target rem)` yang sudah terbukti tidak punya solusi, ke dalam `unordered_set<u64>` per kedalaman, supaya tidak dieksplorasi ulang. Masalahnya:
-
-- **Tidak ada batas ukuran / eviction** pada struktur memo ini — ia tumbuh terus sepanjang satu kali `solve()`.
-- **Tidak ada pengecekan RAM aktual** selama DFS berjalan — satu-satunya guard periodik yang ada hanyalah *time limit* (default 120 detik), bukan *memory limit*.
-- Efektivitasnya (hit-rate) sangat bergantung struktur data: untuk instance dengan angka besar & window kardinalitas lebar ("flat/unstructured"), nilai `rem` di tiap node DFS jarang berulang persis, sehingga memo lebih sering **menambah entry baru** daripada **dipakai ulang** untuk memangkas pencarian.
-
-**Kapan risiko ini paling nyata muncul** (harus memenuhi semua kondisi berikut):
-1. Target `T` (setelah dual-complement) **> 15.000.000** → lolos dari `Bitset DP`.
-2. Array **bukan superincreasing** → lolos dari fast-path `Greedy`.
-3. GCD = 1, tidak ada obstruksi paritas → lolos `TrivialPreCheck`.
-4. Window kardinalitas `[k_min, k_max]` **lebar** (bukan sempit) → lolos deteksi `NarrowKWindow`, sehingga oracle pemangkas jarang berhasil.
-5. `N` di kisaran menengah (≈40–70 berdasarkan pola benchmark di atas) dengan elemen bermagnitude besar & acak ("flat").
-6. Waktu solve dibiarkan mendekati batas default (120 detik) — makin lama berjalan, makin banyak entry ter-akumulasi.
-
-Estimasi kasar dari data benchmark: biaya memo ≈ **21 byte per DFS state**. Jika throughput eksplorasi ~1,7–4 juta state/detik dan solver berjalan mendekati batas waktu 120 detik, jumlah state yang tereksplorasi bisa mencapai ratusan juta — cukup untuk mendorong RAM proses ke kisaran beberapa GB, berpotensi melebihi kapasitas RAM 8 GB pada mesin biasa, **karena tidak ada mekanisme apa pun di kode yang secara aktif membatasi konsumsi memori selama fase pencarian berlangsung.**
-
-> **Rekomendasi praktis:** untuk instance dengan karakteristik di atas (target besar, struktur flat, N menengah), pertimbangkan menurunkan `time_limit_ms` secara eksplisit, atau memonitor RAM proses secara eksternal saat menjalankan v2 pada input yang tidak dikenal karakteristiknya.
+**Speed conclusion:** v2 **does not win universally across the board**. For superincreasing cases, its victory is absolute. For heavy DFS cases, v2 is *often* much faster thanks to more aggressive `Block-Bound` pruning — but there are real-world instances (such as N=45 above) where v2 is actually slower while consuming substantially more memory than v1.
 
 ---
 
-## 5. Algoritma di Balik Layar (L0–L8)
+## 4. The v2 Tradeoff: RAM Can Balloon
 
-Solver memilih strategi secara otomatis lewat `AdaptiveStrategySelector`, urutan pengecekan:
+The new `Block-Bound` feature in v2 works by recording DFS states `(depth i, remaining target rem)` that have been proven to yield no solution into an `unordered_set<u64>` per depth, preventing them from being re-explored. The issue:
+
+- **No size limit / eviction** on this memo structure — it grows continuously throughout a single `solve()` execution.
+- **No actual RAM checking** while DFS is running — the only periodic guard present is a *time limit* (default 120 seconds), not a *memory limit*.
+- Its effectiveness (hit-rate) heavily depends on data structure: for instances with large numbers & wide cardinality windows ("flat/unstructured"), the `rem` value at each DFS node rarely repeats identically, meaning the memo more often **adds new entries** rather than **being reused** to prune the search.
+
+**When this risk is most pronounced** (must satisfy all of the following conditions):
+1. Target `T` (after dual-complement) **> 15,000,000** → bypasses `Bitset DP`.
+2. Array is **not superincreasing** → bypasses the `Greedy` fast-path.
+3. GCD = 1, no parity obstruction → passes `TrivialPreCheck`.
+4. Cardinality window `[k_min, k_max]` is **wide** (not narrow) → bypasses `NarrowKWindow` detection, so pruning oracles rarely succeed.
+5. `N` is in the medium range (≈40–70 based on the benchmark patterns above) with large & random element magnitudes ("flat").
+6. Solve time approaches the default limit (120 seconds) — the longer it runs, the more entries accumulate.
+
+Rough estimate from benchmark data: memo overhead ≈ **21 bytes per DFS state**. If exploration throughput is ~1.7–4 million states/second and the solver runs close to the 120-second time limit, explored states can reach hundreds of millions — enough to push process RAM into several GBs, potentially exceeding the 8 GB RAM capacity of typical machines, **because there is no mechanism in the code that actively limits memory consumption during the search phase.**
+
+> **Practical recommendation:** for instances exhibiting the above characteristics (large target, flat structure, medium N), consider explicitly lowering `time_limit_ms`, or monitoring process RAM externally when running v2 on inputs with unknown characteristics.
+
+---
+
+## 5. Under-the-Hood Algorithms (L0–L8)
+
+The solver selects strategies automatically via `AdaptiveStrategySelector`, checking in the following order:
 
 1. **L2 — Trivial Exact Pre-Reduction**
-   Deteksi kasus instan: `target=0`, target melebihi total sum, obstruksi modular GCD, obstruksi paritas, atau window kardinalitas kosong → langsung SAT/UNSAT tanpa pencarian.
+   Instant case detection: `target=0`, target exceeds total sum, GCD modular obstruction, parity obstruction, or empty cardinality window → immediately SAT/UNSAT without searching.
 
-2. **L1 — Greedy Superincreasing (Exact O(n))** *(v2 saja — baru)*
-   Aktif jika array terbukti penuh superincreasing (tiap elemen > jumlah semua elemen lebih kecil di bawahnya). Solusi selalu unik, diputuskan take/skip per elemen tanpa backtrack sama sekali — O(n), tidak pernah salah karena sifat struktural superincreasing menjamin tidak ada kombinasi elemen kecil yang bisa menyamai elemen besar di atasnya.
+2. **L1 — Greedy Superincreasing (Exact O(n))** *(v2 only — new)*
+   Active if the array is fully proven to be superincreasing (each element > sum of all smaller elements below it). The solution is always unique, decided take/skip per element without any backtracking — O(n), never incorrect because the structural property of superincreasing sequences guarantees no combination of smaller elements can equal a larger element above them.
 
 3. **L3 — Bitset DP (Vectorized Exact)**
-   Dipakai kalau target ≤ 15.000.000 dan estimasi memori bitset masih dalam budget. DP klasik subset-sum dengan bitset 64-bit per word, ditelusuri balik lewat array `parent[]` untuk merekonstruksi solusi. Cepat & RAM rendah untuk target kecil.
+   Used when target ≤ 15,000,000 and bitset memory estimate is within budget. Classical subset-sum DP with 64-bit bitsets per word, backtracked through `parent[]` array to reconstruct the solution. Fast & low RAM for small targets.
 
 4. **L4 — Hybrid Tail-Table + Pruned DFS**
-   Strategi default untuk kasus berat (target besar, bukan superincreasing, bukan target kecil):
-   - Array dipecah jadi `prefix` (di-DFS) dan `tail` (m elemen terakhir, ditabulasi lewat *meet-in-the-middle* dengan Gray-code incremental supaya O(2^m) bukan O(m·2^m)).
-   - DFS di prefix dengan pruning: suffix-sum bound, oracle kardinalitas `is_cardinality_feasible` (binary search O(log n)), dan heuristik urutan cabang (pilih include/exclude yang rem-nya lebih dekat ke setengah suffix-sum).
-   - Saat mencapai `cutoff`, sisa target dicari lewat binary search di tail-table.
-   - **v1**: berhenti di sini.
-   - **v2 menambah**: memoisasi `Block-Bound` per `(i, rem)` (lihat Bagian 4) + root-split paralel multi-thread untuk mode `findone` pada instance besar.
+   Default strategy for heavy cases (large target, not superincreasing, not small target):
+   - Array is split into `prefix` (explored via DFS) and `tail` (last m elements, tabulated via *meet-in-the-middle* with incremental Gray-code for O(2^m) instead of O(m·2^m)).
+   - DFS on prefix with pruning: suffix-sum bound, cardinality oracle `is_cardinality_feasible` (binary search O(log n)), and branch ordering heuristic (chooses include/exclude whose rem is closer to half of suffix-sum).
+   - Upon reaching `cutoff`, the remaining target is searched via binary search in the tail-table.
+   - **v1**: stops here.
+   - **v2 adds**: `Block-Bound` memoization per `(i, rem)` (see Section 4) + multi-threaded root-split parallel search for `findone` mode on large instances.
 
 5. **L7 — Independent Verifier**
-   Setelah solusi ditemukan (versi manapun), diverifikasi ulang secara independen: indeks valid, tidak ada duplikat, nilai cocok dengan array asli, dan jumlah persis sama dengan target.
+   After a solution is found (any version), it is independently re-verified: valid indices, no duplicates, values match original array, and sum exactly equals target.
 
 6. **L8 — Zero-Sum Swap Extractor**
-   Untuk mode `findall`/`zero`: dari satu solusi dasar, cari swap kombinatorial jarak ≤4 dengan delta sama (elemen masuk vs keluar) untuk menghasilkan puluhan-ratusan variasi solusi tambahan dengan sangat cepat, tanpa DFS ulang penuh.
+   For `findall`/`zero` mode: from a single base solution, searches combinatorial swaps at distance ≤4 with identical delta (elements entering vs leaving) to generate dozens to hundreds of additional solution variations extremely quickly, without a full re-DFS.
 
 ---
 
-## 6. Kompilasi (MinGW-w64 GCC)
+## 6. Compilation (MinGW-w64 GCC)
 
-Jalankan di PowerShell/Command Prompt pada folder proyek:
+Run in PowerShell/Command Prompt in the project folder:
 
 **CLI:**
 ```
@@ -129,68 +129,68 @@ g++ -O3 -std=c++17 dumbsspGui.cpp -o dumbsspGui.exe -mwindows -lcomctl32 -lcomdl
 
 ---
 
-## 7. Sintaks & Penggunaan CLI
+## 7. CLI Syntax & Usage
 
 ```
 .\dumbsspCli.exe "<elements_list>" <target> [mode] [max_solutions] [time_limit_ms]
 ```
 
-| Parameter | Keterangan |
+| Parameter | Description |
 |---|---|
-| `<elements_list>` | String bilangan bulat positif dipisah koma/spasi, mis. `"10, 20, 30, 40"` |
-| `<target>` | Target sum (T) yang dicari |
-| `[mode]` | Mode pencarian (default: `findone`) — lihat Bagian 8 |
-| `[max_solutions]` | Maksimum witness solusi disimpan di memori untuk `findall` (default: 5000) |
-| `[time_limit_ms]` | Batas waktu komputasi dalam ms (default: 120000 / 2 menit). Gunakan `0`/`none`/`unlimited`/`inf`/`infinite` untuk tanpa batas waktu |
+| `<elements_list>` | String of positive integers separated by comma/space, e.g. `"10, 20, 30, 40"` |
+| `<target>` | Target sum (T) to find |
+| `[mode]` | Search mode (default: `findone`) — see Section 8 |
+| `[max_solutions]` | Maximum solution witnesses stored in memory for `findall` (default: 5000) |
+| `[time_limit_ms]` | Computation time limit in ms (default: 120000 / 2 minutes). Use `0`/`none`/`unlimited`/`inf`/`infinite` for no time limit |
 
 ---
 
-## 8. Deskripsi & Contoh Tiap Mode
+## 8. Mode Descriptions & Examples
 
-### [A] `findone` — Solusi Tunggal Tercepat
-Berhenti (*early exit*) segera setelah satu witness valid ditemukan. Ultra cepat (mikrodetik–beberapa ms bahkan untuk N ≥ 80).
+### [A] `findone` — Fastest Single Solution
+Stops (*early exit*) as soon as one valid witness is found. Ultra fast (microseconds to a few ms even for N ≥ 80).
 ```
 .\dumbsspCli.exe "75872066500, 68562112744, 19339160129, 24156275768, 11525390137" 100000000000 findone
 ```
 
 ### [B] `zero` — Find All via L8 Zero-Sum Swap
-Cari satu witness dasar, lalu ekstrak puluhan–ratusan variasi lewat swap kombinatorial jarak ≤4. Sangat cepat, tidak melalui overhead exhaustive search.
+Finds a single base witness, then extracts dozens to hundreds of variations via combinatorial swaps at distance ≤4. Extremely fast, avoiding exhaustive search overhead.
 ```
 .\dumbsspCli.exe "12, 18, 24, 6, 30, 36, 42" 60 zero
 ```
 
 ### [C] `dfs` — Find All via Exhaustive DFS
-Menelusuri seluruh ruang pencarian tanpa early-return — menjamin 100% seluruh kombinasi valid ditemukan. Skalanya mengikuti densitas & kardinalitas problem.
+Traverses the entire search space without early return — guarantees 100% of all valid combinations are found. Scales according to problem density & cardinality.
 ```
 .\dumbsspCli.exe "12, 18, 24, 6, 30, 36, 42" 60 dfs
 ```
 
 ### [D] `count` — Count All
-Menghitung jumlah pasti kombinasi valid tanpa menyimpan witness individual — hemat RAM, pakai counter 128-bit.
+Counts the exact number of valid combinations without storing individual witnesses — RAM-efficient, uses a 128-bit counter.
 ```
 .\dumbsspCli.exe "12, 18, 24, 6, 30, 36, 42" 60 count
 ```
 
 ### [E] `decision` — Pure Existence / SAT Check
-Menjawab murni SATISFIABLE vs PROVABLY UNSAT dengan overhead paling rendah, lewat filter obstruksi modular/kardinalitas awal atau early hit.
+Answers purely SATISFIABLE vs PROVABLY UNSAT with minimal overhead, via initial modular/cardinality obstruction filters or an early hit.
 ```
 .\dumbsspCli.exe "12, 18, 24, 6, 30, 36, 42" 60 decision
 ```
 
 ---
 
-## 9. Matriks Perbandingan Mode
+## 9. Mode Comparison Matrix
 
-| Mode | Kecepatan | Kelengkapan Solusi | Peak RAM (kasus normal) |
+| Mode | Speed | Solution Completeness | Peak RAM (normal cases) |
 |---|---|---|---|
-| `findone` | Ultra cepat | 1 witness | ≤ 20 MB (v1) / bervariasi (v2, lihat Bagian 4) |
-| `zero` | Sangat cepat | Ratusan varian | ≤ 20 MB |
-| `dfs` | Komprehensif | 100% seluruh solusi | ≤ 20 MB |
-| `count` | Cepat–sedang | Hitungan eksak (integer) | Minimal |
-| `decision` | Instan | Status SAT/UNSAT | Minimal |
+| `findone` | Ultra fast | 1 witness | ≤ 20 MB (v1) / variable (v2, see Section 4) |
+| `zero` | Very fast | Hundreds of variants | ≤ 20 MB |
+| `dfs` | Comprehensive | 100% of all solutions | ≤ 20 MB |
+| `count` | Fast–medium | Exact count (integer) | Minimal |
+| `decision` | Instant | SAT/UNSAT status | Minimal |
 
-> Catatan: kolom RAM di tabel ini mengacu ke perilaku umum. Untuk mode `findone` di v2 pada instance besar/flat/target tinggi, lihat Bagian 4 — RAM bisa jauh melebihi 20 MB.
+> Note: The RAM column in this table refers to typical behavior. For `findone` mode in v2 on large/flat/high-target instances, see Section 4 — RAM can significantly exceed 20 MB.
 
 ---
 
-*Dokumentasi ini disusun berdasarkan analisis kode sumber `dumbsspCore.hpp` dan hasil benchmark aktual kedua versi solver.*
+*This documentation was prepared based on source code analysis of `dumbsspCore.hpp` and actual benchmark results from both solver versions.*
