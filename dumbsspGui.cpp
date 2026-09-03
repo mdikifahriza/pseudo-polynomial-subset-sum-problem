@@ -18,6 +18,7 @@
 #include <memory>
 #include <iomanip>
 #include <algorithm>
+#include <mutex>
 #include "dumbsspCore.hpp"
 
 #pragma comment(lib, "comctl32.lib")
@@ -26,7 +27,6 @@
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 
-// Enable Modern Windows Native Visual Styles
 #if defined _M_IX86
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #elif defined _M_X64 || defined __x86_64__
@@ -35,10 +35,8 @@
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #endif
 
-// Custom Windows Messages
 #define WM_APP_SOLVE_FINISHED (WM_USER + 102)
 
-// Control IDs
 enum ControlID {
     IDC_COMBO_PRESETS = 1100,
     IDC_BTN_LOAD_PRESET,
@@ -59,7 +57,6 @@ enum ControlID {
     IDC_STATIC_META,
     IDC_STATIC_STATUS,
     IDC_EDIT_SOLUTION_OUTPUT,
-    // Pop-up Dialog Controls
     IDC_POPUP_EDIT_LIST = 2100,
     IDC_POPUP_BTN_EXPORT,
     IDC_POPUP_BTN_CLOSE,
@@ -68,12 +65,10 @@ enum ControlID {
     IDC_HELP_BTN_CLOSE
 };
 
-// Global App State
 HWND g_hWnd = NULL;
 HWND g_hDlgSolutions = NULL;
 HWND g_hDlgHelp = NULL;
 
-// Controls
 HWND g_hComboPresets = NULL, g_hBtnLoadPreset = NULL, g_hBtnHelp = NULL;
 HWND g_hEditElements = NULL, g_hEditTarget = NULL;
 HWND g_hRadioFindOne = NULL, g_hRadioFindAll = NULL, g_hRadioCountAll = NULL, g_hRadioDecision = NULL;
@@ -82,13 +77,11 @@ HWND g_hComboStrategy = NULL, g_hComboMem = NULL;
 HWND g_hBtnSolve = NULL, g_hBtnStop = NULL, g_hBtnViewSolutions = NULL;
 HWND g_hStaticMeta = NULL, g_hStaticStatus = NULL, g_hEditSolOutput = NULL;
 
-// Standard Native Fonts
 HFONT g_hFontNormal = NULL;
 HFONT g_hFontBold = NULL;
 HFONT g_hFontTitle = NULL;
 HFONT g_hFontMono = NULL;
 
-// Solver Threads & State
 std::unique_ptr<AdaptiveExactSolver> g_solver;
 std::thread g_workerThread;
 std::atomic<bool> g_isSolving{false};
@@ -99,7 +92,6 @@ ExecutionStats g_lastStats;
 SolveMode g_lastMode = SolveMode::FindOne;
 std::vector<InstancePreset> g_presets;
 
-// Forward Declarations
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK SolutionDialogWndProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK HelpDialogWndProc(HWND, UINT, WPARAM, LPARAM);
@@ -117,18 +109,16 @@ void OpenSolutionsPopupWindow(HWND hParent);
 void OpenHelpPopupWindow(HWND hParent);
 void ExportAllSolutionsToTxt(HWND hWndParent);
 
-// Global SEH Crash Handler
 LONG WINAPI GlobalCrashHandler(EXCEPTION_POINTERS* pException) {
     char buf[512];
     sprintf_s(buf, "CRASH DETECTED!\nException Code: 0x%08lX\nAddress: %p\n\nProcess is aborting safely.",
-              (unsigned long)pException->ExceptionRecord->ExceptionCode,
-              pException->ExceptionRecord->ExceptionAddress);
+            (unsigned long)pException->ExceptionRecord->ExceptionCode,
+            pException->ExceptionRecord->ExceptionAddress);
     std::cerr << "\n[FATAL CRASH]: " << buf << "\n";
-    MessageBoxA(NULL, buf, "ATRS Solver Fatal Alert", MB_OK | MB_ICONERROR);
+    MessageBoxA(NULL, buf, "DUMBSSP Solver Fatal Alert", MB_OK | MB_ICONERROR);
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-// Win32 Subclass Procedure for Ctrl+A Support on Edit Controls
 LRESULT CALLBACK EditCtrlASubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
     switch (uMsg) {
         case WM_KEYDOWN: {
@@ -139,7 +129,7 @@ LRESULT CALLBACK EditCtrlASubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
             break;
         }
         case WM_CHAR: {
-            if (wParam == 1) { // Ctrl+A character code
+            if (wParam == 1) {
                 return 0;
             }
             break;
@@ -152,7 +142,6 @@ LRESULT CALLBACK EditCtrlASubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPAR
     return DefSubclassProc(hWnd, uMsg, wParam, lParam);
 }
 
-// Main Entry Point
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
     SetUnhandledExceptionFilter(GlobalCrashHandler);
 
@@ -164,16 +153,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     g_hFontNormal = CreateFontW(15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                                 OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     g_hFontBold = CreateFontW(15, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-                              OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+                            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     g_hFontTitle = CreateFontW(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-                               OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+                            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     g_hFontMono = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-                              OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, FIXED_PITCH, L"Consolas");
+                            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, FIXED_PITCH, L"Consolas");
 
     g_solver = std::make_unique<AdaptiveExactSolver>();
     g_presets = PresetRepository::get_all_presets();
 
-    // Register Main Window Class
     WNDCLASSEXW wc = { sizeof(WNDCLASSEXW) };
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
@@ -183,7 +171,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
     RegisterClassExW(&wc);
 
-    // Register Pop-up Dialog Window Class
     WNDCLASSEXW wcDlg = { sizeof(WNDCLASSEXW) };
     wcDlg.lpfnWndProc = SolutionDialogWndProc;
     wcDlg.hInstance = hInstance;
@@ -193,7 +180,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     wcDlg.hIcon = LoadIcon(NULL, IDI_APPLICATION);
     RegisterClassExW(&wcDlg);
 
-    // Register Help Dialog Window Class
     WNDCLASSEXW wcHelp = { sizeof(WNDCLASSEXW) };
     wcHelp.lpfnWndProc = HelpDialogWndProc;
     wcHelp.hInstance = hInstance;
@@ -214,7 +200,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     ShowWindow(g_hWnd, nCmdShow);
     UpdateWindow(g_hWnd);
 
-    // Start with clean empty inputs on startup
     UpdateInstanceMetadataDisplay(g_currentInstance);
 
     MSG msg;
@@ -240,7 +225,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     return wWinMain(hInstance, hPrevInstance, GetCommandLineW(), nCmdShow);
 }
 
-// Window Procedure for Main GUI
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE: {
@@ -299,7 +283,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
             g_lastMode = mode;
 
-            // Aktifkan tombol "Lihat Solusi" untuk SEMUA mode setelah pencarian selesai
             if (stats_copy.solved) {
                 EnableWindow(g_hBtnViewSolutions, TRUE);
             } else {
@@ -317,7 +300,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     return 0;
 }
 
-// Helper: Safely get full control text dynamically
 std::string GetControlTextDynamic(HWND hEdit) {
     if (!hEdit) return "";
     int len = GetWindowTextLengthA(hEdit);
@@ -337,7 +319,6 @@ void SetAppBusyState(bool busy) {
     }
 }
 
-// Load Selected Preset directly into input boxes
 void LoadSelectedPresetToSolver(int idx) {
     if (idx < 0 || idx >= (int)g_presets.size()) idx = 0;
     const auto& p = g_presets[idx];
@@ -357,7 +338,6 @@ void LoadSelectedPresetToSolver(int idx) {
     UpdateInstanceMetadataDisplay(g_currentInstance);
 }
 
-// Parse Current Inputs from TextBoxes
 void ParseCurrentInputs() {
     std::string s_elem = GetControlTextDynamic(g_hEditElements);
     std::string s_tgt = GetControlTextDynamic(g_hEditTarget);
@@ -373,11 +353,7 @@ void ParseCurrentInputs() {
     UpdateInstanceMetadataDisplay(g_currentInstance);
 }
 
-// Create Unified Main UI
 void CreateMainUI(HWND hWnd) {
-    // -------------------------------------------------------------
-    // GENERATOR PRESET SECTION
-    // -------------------------------------------------------------
     HWND lblGen = CreateWindowExW(0, L"STATIC", L"Dataset Generator / Preset:", WS_CHILD | WS_VISIBLE, 15, 12, 340, 20, hWnd, NULL, NULL, NULL);
     SendMessage(lblGen, WM_SETFONT, (WPARAM)g_hFontBold, TRUE);
 
@@ -395,9 +371,6 @@ void CreateMainUI(HWND hWnd) {
     g_hBtnLoadPreset = CreateWindowExW(0, L"BUTTON", L"⬇ Muat ke Input", WS_CHILD | WS_VISIBLE, 405, 33, 140, 26, hWnd, (HMENU)(INT_PTR)IDC_BTN_LOAD_PRESET, NULL, NULL);
     SendMessage(g_hBtnLoadPreset, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
 
-    // -------------------------------------------------------------
-    // INPUT SECTION
-    // -------------------------------------------------------------
     HWND lbl1 = CreateWindowExW(0, L"STATIC", L"Input Elements (Dipisahkan koma / spasi / baris baru):", WS_CHILD | WS_VISIBLE, 15, 68, 530, 20, hWnd, NULL, NULL, NULL);
     SendMessage(lbl1, WM_SETFONT, (WPARAM)g_hFontBold, TRUE);
 
@@ -418,9 +391,6 @@ void CreateMainUI(HWND hWnd) {
     );
     SendMessage(g_hEditTarget, WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
 
-    // -------------------------------------------------------------
-    // SOLVE MODE & OPTIONS SECTION
-    // -------------------------------------------------------------
     HWND grpMode = CreateWindowExW(0, L"BUTTON", L"Mode Penyelesaian & Opsi", WS_CHILD | WS_VISIBLE | BS_GROUPBOX, 15, 256, 530, 68, hWnd, NULL, NULL, NULL);
     SendMessage(grpMode, WM_SETFONT, (WPARAM)g_hFontBold, TRUE);
 
@@ -438,9 +408,6 @@ void CreateMainUI(HWND hWnd) {
     SendMessage(g_hChkExhaustive, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
     EnableWindow(g_hChkExhaustive, FALSE);
 
-    // -------------------------------------------------------------
-    // ENGINE OVERRIDE & HARDWARE CONFIG
-    // -------------------------------------------------------------
     HWND grpEngine = CreateWindowExW(0, L"BUTTON", L"Konfigurasi Mesin & Eksekusi", WS_CHILD | WS_VISIBLE | BS_GROUPBOX, 15, 330, 530, 80, hWnd, NULL, NULL, NULL);
     SendMessage(grpEngine, WM_SETFONT, (WPARAM)g_hFontBold, TRUE);
 
@@ -464,9 +431,6 @@ void CreateMainUI(HWND hWnd) {
     SendMessage(g_hComboMem, CB_SETCURSEL, 1, 0);
     SendMessage(g_hComboMem, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
 
-    // -------------------------------------------------------------
-    // ACTION BUTTONS SECTION
-    // -------------------------------------------------------------
     g_hBtnSolve = CreateWindowExW(0, L"BUTTON", L"▶ SOLVE EXACT", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 15, 418, 155, 38, hWnd, (HMENU)(INT_PTR)IDC_BTN_SOLVE, NULL, NULL);
     g_hBtnStop = CreateWindowExW(0, L"BUTTON", L"⏹ STOP", WS_CHILD | WS_VISIBLE, 178, 418, 80, 38, hWnd, (HMENU)(INT_PTR)IDC_BTN_STOP, NULL, NULL);
     HWND btnClear = CreateWindowExW(0, L"BUTTON", L"Clear", WS_CHILD | WS_VISIBLE, 266, 418, 75, 38, hWnd, (HMENU)(INT_PTR)IDC_BTN_CLEAR, NULL, NULL);
@@ -480,9 +444,6 @@ void CreateMainUI(HWND hWnd) {
     SendMessage(btnClear, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
     SendMessage(g_hBtnViewSolutions, WM_SETFONT, (WPARAM)g_hFontBold, TRUE);
 
-    // -------------------------------------------------------------
-    // SOLUTION OUTPUT SECTION
-    // -------------------------------------------------------------
     HWND lblSol = CreateWindowExW(0, L"STATIC", L"Output Bukti Solusi Eksak & Verifikasi Independen (L7):", WS_CHILD | WS_VISIBLE, 15, 464, 530, 20, hWnd, NULL, NULL, NULL);
     SendMessage(lblSol, WM_SETFONT, (WPARAM)g_hFontBold, TRUE);
     g_hEditSolOutput = CreateWindowExW(
@@ -497,9 +458,6 @@ void CreateMainUI(HWND hWnd) {
     SetWindowSubclass(g_hEditTarget, EditCtrlASubclassProc, 2, 0);
     SetWindowSubclass(g_hEditSolOutput, EditCtrlASubclassProc, 3, 0);
 
-    // -------------------------------------------------------------
-    // RIGHT PANEL - STRUCTURAL PROFILER & TELEMETRY
-    // -------------------------------------------------------------
     HWND grpMeta = CreateWindowExW(0, L"BUTTON", L"L0 & L1: Instance Structure & Structural Profiler", WS_CHILD | WS_VISIBLE | BS_GROUPBOX, 560, 12, 585, 230, hWnd, NULL, NULL, NULL);
     SendMessage(grpMeta, WM_SETFONT, (WPARAM)g_hFontBold, TRUE);
 
@@ -541,7 +499,6 @@ void CreateMainUI(HWND hWnd) {
     SendMessage(g_hStaticStatus, WM_SETFONT, (WPARAM)g_hFontMono, TRUE);
 }
 
-// Update Instance Metadata Panel
 void UpdateInstanceMetadataDisplay(const Instance& inst) {
     std::wstringstream ss;
     ss << L"Elements (N)       : " << inst.raw_elements.size() << L" raw (" << inst.A.size() << L" aktif positif, " << inst.unique_count << L" unik)\n";
@@ -557,7 +514,6 @@ void UpdateInstanceMetadataDisplay(const Instance& inst) {
     if (g_hStaticMeta) SetWindowTextW(g_hStaticMeta, ss.str().c_str());
 }
 
-// Update Telemetry Panel
 void UpdateLiveTelemetryDisplay(const ExecutionStats& stats, SolveMode mode) {
     std::wstringstream ss;
     std::wstring status_str = L"COMPLETED (Exact)";
@@ -570,7 +526,6 @@ void UpdateLiveTelemetryDisplay(const ExecutionStats& stats, SolveMode mode) {
     ss << L"Status             : " << status_str << L"\n\n";
     ss << L"Strategi Terpilih  : " << std::wstring(strategy_to_string(stats.strategy_chosen).begin(), strategy_to_string(stats.strategy_chosen).end()) << L"\n";
     
-    // L7 Independent Verification Result
     if (stats.has_solution) {
         if (stats.verified) {
             ss << L"L7 Verifier        : [TERVERIFIKASI 100% VALID]\n";
@@ -592,7 +547,6 @@ void UpdateLiveTelemetryDisplay(const ExecutionStats& stats, SolveMode mode) {
     ss << L"Pesan Engine       : " << std::wstring(stats.message.begin(), stats.message.end());
     if (g_hStaticStatus) SetWindowTextW(g_hStaticStatus, ss.str().c_str());
 
-    // Update Solution Output
     std::wstringstream sol_ss;
     if (stats.has_solution) {
         if (mode == SolveMode::FindAll) {
@@ -616,11 +570,11 @@ void UpdateLiveTelemetryDisplay(const ExecutionStats& stats, SolveMode mode) {
 
             if (stats.all_solutions.size() > max_disp) {
                 sol_ss << L"\n... [" << (stats.all_solutions.size() - max_disp) 
-                       << L" solusi lainnya tersimpan! Klik tombol '📋 Lihat Solusi' di atas untuk melihat ratusan solusi atau ekspor ke .txt]\n";
+                    << L" solusi lainnya tersimpan! Klik tombol '📋 Lihat Solusi' di atas untuk melihat ratusan solusi atau ekspor ke .txt]\n";
             }
             if (stats.status == SolverStatus::PartialSolutionCapped) {
                 sol_ss << L"\n[INFO]: Penyimpanan witness dibatasi pada " << stats.all_solutions.size() 
-                       << L" solusi demi keamanan memori. Penghitungan count tetap 100% eksak.\n";
+                    << L" solusi demi keamanan memori. Penghitungan count tetap 100% eksak.\n";
             }
             sol_ss << L"\nVerifikasi Matematika & L7 Engine: 100% Eksak.";
         } else if (mode == SolveMode::CountAll) {
@@ -645,7 +599,7 @@ void UpdateLiveTelemetryDisplay(const ExecutionStats& stats, SolveMode mode) {
                 if (i + 1 < stats.sample_solution.original_indices.size()) sol_ss << L", ";
             }
             sol_ss << L"]\n\nUji Verifikasi Independen (L7): Sum = " << check_sum 
-                   << L" (Sesuai Target: " << (check_sum == g_currentInstance.target ? L"YA - 100% VALID" : L"TIDAK") << L")\n";
+                << L" (Sesuai Target: " << (check_sum == g_currentInstance.target ? L"YA - 100% VALID" : L"TIDAK") << L")\n";
             sol_ss << L"Detail L7 Verifier: " << std::wstring(stats.verification_message.begin(), stats.verification_message.end()) << L"\n";
         }
     } else {
@@ -661,7 +615,6 @@ void UpdateLiveTelemetryDisplay(const ExecutionStats& stats, SolveMode mode) {
     if (g_hEditSolOutput) SetWindowTextW(g_hEditSolOutput, sol_ss.str().c_str());
 }
 
-// Start Solving Task
 void StartSolving() {
     if (g_isSolving) return;
 
@@ -681,7 +634,7 @@ void StartSolving() {
 
     g_isSolving = true;
     SetAppBusyState(true);
-    SetWindowTextW(g_hEditSolOutput, L"Sedang menjalankan ATRS L0-L8 Native Engine di latar belakang...");
+    SetWindowTextW(g_hEditSolOutput, L"Sedang menjalankan DUMB SSP L0-L8 Native Engine di latar belakang...");
     if (g_hStaticStatus) {
         SetWindowTextW(g_hStaticStatus,
             L"Status             : RUNNING (Sedang mencari solusi...)\n\n"
@@ -706,10 +659,8 @@ void StartSolving() {
         ExecutionStats result;
         try {
             if (strat_sel == 0) {
-                // Auto Adaptive Router
                 result = g_solver->run(inst_copy, mode, mem_limit, exhaustive_find_all);
             } else {
-                // Forced Engine Strategy
                 StrategyType forced = StrategyType::HybridTailTable;
                 if (strat_sel == 1) forced = StrategyType::HybridTailTable;
                 else if (strat_sel == 2) forced = StrategyType::BitsetDP;
@@ -732,20 +683,15 @@ void StartSolving() {
     });
 }
 
-// Stop Solving Task
 void StopSolving() {
     if (g_isSolving && g_solver) {
         g_solver->stop_flag = true;
     }
 }
 
-// =========================================================================
-// POP-UP DIALOG WINDOW: LIHAT SOLUSI & DETAIL PENYELESAIAN (SEMUA MODE)
-// =========================================================================
 LRESULT CALLBACK SolutionDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE: {
-            // Header Info Label
             std::wstringstream info_ss;
             std::wstringstream list_ss;
             size_t total_stored = g_lastStats.all_solutions.size();
@@ -849,7 +795,7 @@ LRESULT CALLBACK SolutionDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
                             << L"Tidak ditemukan subset yang berjumlah T = " << g_currentInstance.target << L".";
                     list_ss << L"Target Value (T): " << g_currentInstance.target << L"\r\nStatus: UNSAT TERBUKTI EKSAK.\r\nAlasan: " << std::wstring(g_lastStats.message.begin(), g_lastStats.message.end()) << L"\r\n";
                 }
-            } else { // FindAll Mode
+            } else {
                 if (total_counted > 1000 || total_stored > 1000) {
                     info_ss << L"⚠ Ditemukan " << total_counted << L" solusi (" 
                             << total_stored << L" solusi tersimpan di memori).\r\n"
@@ -884,7 +830,6 @@ LRESULT CALLBACK SolutionDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
             );
             SendMessage(lblInfo, WM_SETFONT, (WPARAM)g_hFontBold, TRUE);
 
-            // Multiline Edit Box for Solution Viewing
             HWND hEditList = CreateWindowExW(
                 WS_EX_CLIENTEDGE, L"EDIT", L"",
                 WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL,
@@ -896,7 +841,6 @@ LRESULT CALLBACK SolutionDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
             SetWindowTextW(hEditList, list_ss.str().c_str());
 
-            // Action Buttons: Ekspor TXT & Tutup
             HWND btnExport = CreateWindowExW(
                 0, L"BUTTON", L"💾 Ekspor Hasil / Solusi ke TXT",
                 WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
@@ -931,7 +875,6 @@ LRESULT CALLBACK SolutionDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     return 0;
 }
 
-// Buka Jendela Pop-up Lihat Solusi
 void OpenSolutionsPopupWindow(HWND hParent) {
     if (g_hDlgSolutions != NULL) {
         SetForegroundWindow(g_hDlgSolutions);
@@ -953,7 +896,6 @@ void OpenSolutionsPopupWindow(HWND hParent) {
         hParent, NULL, GetModuleHandle(NULL), NULL
     );
 
-    // Center Dialog relative to main window
     RECT rcParent, rcDlg;
     GetWindowRect(hParent, &rcParent);
     GetWindowRect(g_hDlgSolutions, &rcDlg);
@@ -962,7 +904,6 @@ void OpenSolutionsPopupWindow(HWND hParent) {
     SetWindowPos(g_hDlgSolutions, HWND_TOP, x, y, 0, 0, SWP_NOSIZE);
 }
 
-// Fungsi Ekspor Seluruh Solusi ke File TXT
 void ExportAllSolutionsToTxt(HWND hWndParent) {
     if (!g_lastStats.solved) {
         MessageBoxW(hWndParent, L"Tidak ada data penyelesaian untuk diekspor.", L"Info Ekspor", MB_OK | MB_ICONINFORMATION);
@@ -1051,7 +992,6 @@ void ExportAllSolutionsToTxt(HWND hWndParent) {
     }
 }
 
-// Window Procedure untuk Dialog Panduan & Arsitektur
 LRESULT CALLBACK HelpDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE: {
@@ -1198,7 +1138,6 @@ LRESULT CALLBACK HelpDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
     return 0;
 }
 
-// Buka Jendela Pop-up Panduan & Arsitektur
 void OpenHelpPopupWindow(HWND hParent) {
     if (g_hDlgHelp != NULL) {
         SetForegroundWindow(g_hDlgHelp);
@@ -1214,7 +1153,6 @@ void OpenHelpPopupWindow(HWND hParent) {
         hParent, NULL, GetModuleHandle(NULL), NULL
     );
 
-    // Center Dialog relative to main window
     RECT rcParent, rcDlg;
     GetWindowRect(hParent, &rcParent);
     GetWindowRect(g_hDlgHelp, &rcDlg);

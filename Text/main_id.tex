@@ -1,0 +1,417 @@
+\documentclass[journal,onecolumn,11pt]{IEEEtran}
+
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{cite}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{multirow}
+
+\newtheorem{theorem}{Teorema}
+\newtheorem{lemma}{Lemma}
+\newtheorem{definition}{Definisi}
+\newtheorem{corollary}{Korolar}
+\newtheorem{remark}{Catatan}
+
+\begin{document}
+
+\title{Dumb Ways to Solve Subset Sum: Penyelesaian Eksak Single-Threaded pada $N = 100$, $T \approx 1\text{T}$, Densitas $\approx 2{,}51$, dan Memori di Bawah $50$\,MB RAM pada Laptop Berbiaya Rendah}
+
+\author{M. Diki Fahriza\\
+Peneliti Independen\\
+\texttt{mdikifahriza3@gmail.com}}
+
+\maketitle
+
+\begin{abstract}
+\textit{Subset Sum Problem} (SSP) merupakan salah satu masalah NP-lengkap fundamental dengan penerapan luas dalam kriptanalisis, pemrograman bilangan bulat, dan optimasi kombinatorial. Penyelesai (*solver*) eksak praktis umumnya menghadapi tiga hambatan komputasi utama: pendekatan simetris \textit{Meet-in-the-Middle} (MITM) membutuhkan memori $\mathcal{O}(2^{N/2})$ yang memicu \textit{cache thrashing} parah saat $N \gtrsim 50$; pemrograman dinamis (DP) klasik memerlukan memori $\mathcal{O}(T)$ yang runtuh pada target berskala triliun ($T \ge 10^{12}$); serta ekstraksi banyak saksi solusi dari pohon \textit{branch-and-bound} menuntut penelusuran ulang yang mahal. Makalah ini menyajikan \textsc{Dumb SSP Solver}, sebuah arsitektur penyelesai eksak berbasis C++20 yang mengintegrasikan empat mekanisme rekayasa: (1) mesin memoization \textit{tail-table} asimetris pada $m$ elemen aktif terkecil ($m = N-1$ untuk $N \le 20$, dan $m = 20$ dibatasi memori untuk $N > 20$), yang membatasi penggunaan memori pada $16{,}00$\,MB agar sepenuhnya muat di dalam \textit{cache} CPU Level-3 (L3) sekaligus memangkas $m$ tingkat rekursi terakhir melalui satu kali pencarian biner per daun; (2) mesin DP bitset paralel-word $64$-bit yang dibatasi untuk target efektif kecil ($T \le 1{,}5\times10^{7}$) dan kueri saksi tunggal (\texttt{FindOne}/\texttt{DecisionOnly}); (3) \textit{Zero-Sum Swap Extractor} berderajat hingga yang memanen saksi tambahan melalui substitusi elemen simetris dan asimetris hingga derajat $p \le 4$ dalam kompleksitas waktu polinomial tetap $\mathcal{O}(k^4\log k + (N-k)^4\log k)$; serta (4) verifikator \textit{black-box} $\mathcal{O}(k)$ terisolasi (L7) yang memvalidasi batas indeks, keunikan elemen, dan kesamaan jumlah eksak di luar mesin pencarian. Seluruh waktu eksekusi yang dilaporkan diperoleh dari tolok ukur uji mandiri \textit{single-threaded} yang sepenuhnya dapat direproduksi pada rentang $N=5$ hingga $N=100$ dengan target berskala triliun pada perangkat keras laptop komoditas dan dapat diverifikasi langsung melalui \texttt{dumbsspCli.exe}.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Subset Sum Problem, Meet-in-the-Middle, Rekayasa Algoritma, Lokalitas Cache, Dynamic Programming Bitset, Ruang Pencarian Lokal, Perturbasi Jumlah-Nol, Kompleksitas Terparameterisasi, Reproduktibilitas.
+\end{IEEEkeywords}
+
+\section{Pendahuluan}
+\label{sec:introduction}
+
+\IEEEPARstart{M}{asalah} \textsc{Subset Sum Problem} (SSP) adalah salah satu masalah paling mendasar dalam ilmu komputer teoretis, riset operasi, dan optimasi kombinatorial. Secara formal, diberikan sebuah multiset terurut dari $N$ bilangan bulat positif $A = \{a_1, a_2, \dots, a_N\} \subset \mathbb{Z}^+$ dan bilangan bulat target $T \in \mathbb{Z}^+$, masalah keputusan SSP menanyakan apakah terdapat himpunan bagian indeks $S \subseteq \{1, 2, \dots, N\}$ sedemikian rupa sehingga penjumlahan elemen-elemen terpilih tepat sama dengan $T$:
+\begin{equation}
+    \sum_{i \in S} a_i = T.
+    \label{eq:ssp_core}
+\end{equation}
+
+Tiga varian formulasi dipertimbangkan dalam makalah ini dan didukung langsung oleh implementasi melalui nilai \texttt{SolveMode}:
+\begin{enumerate}
+    \item \textbf{Varian Keputusan (\texttt{DecisionOnly}):} menentukan keberadaan setidaknya satu himpunan bagian yang memenuhi, $\Phi(A, T) \in \{\text{BENAR}, \text{SALAH}\}$.
+    \item \textbf{Varian Pencarian (\texttt{FindOne}/\texttt{FindAll}):} merekonstruksi saksi biner eksplisit $x = (x_1, \dots, x_N) \in \{0, 1\}^N$ dengan $\sum_{i=1}^N a_i x_i = T$, baik saksi tunggal maupun sebanyak batas yang dikonfigurasi.
+    \item \textbf{Varian Pencacahan (\texttt{CountAll}):} menghitung kardinalitas
+    \begin{equation}
+        \mathcal{N}(A, T) = \left| \left\{ S \subseteq \{1, 2, \dots, N\} : \sum_{i \in S} a_i = T \right\} \right|
+    \end{equation}
+    terhadap elemen aktif multiset $A$ (Bagian~\ref{sec:preliminaries}); lihat Catatan~\ref{rem:zero-count} untuk penanganan elemen bernilai nol.
+\end{enumerate}
+
+\subsection{Lanskap Teori Kompleksitas}
+Sejak karya monumental Karp pada tahun 1972 mengenai reduksibilitas kombinatorial \cite{karp1972reducibility}, SSP memegang peran sentral dalam teori kompleksitas komputasi. Sebagai salah satu dari 21 masalah NP-lengkap Karp, SSP bersifat sulit (*intractable*) pada kasus terburuk di bawah asumsi $\text{P} \neq \text{NP}$, dan di bawah \textit{Strong Exponential Time Hypothesis} (SETH), algoritma eksak untuk instans sembarang diperkirakan membutuhkan waktu $\mathcal{O}^*(2^{(1-\varepsilon)N})$.
+
+Meskipun demikian, SSP tergolong NP-lengkap lemah (*weakly NP-complete*): ketika $T$ dan nilai $a_i$ dibatasi secara polinomial dalam $N$, pemrograman dinamis Bellman menyelesaikan SSP dalam waktu pseudo-polinomial $\mathcal{O}(N \cdot T)$ \cite{pisinger1997minimal}. Algoritma pseudo-polinomial mendekati linier $\widetilde{\mathcal{O}}(N + T)$ kemudian dikembangkan melalui pewarnaan acak (*color coding*), fungsi pembangkit, dan konvolusi FFT (Bringmann \cite{bringmann2017near}, Jin dan Wu \cite{jin2019simple}, Chen dkk. \cite{chen2024improved}).
+
+\subsection{Hambatan Praktis pada Penyelesai yang Ada}
+\begin{enumerate}
+    \item \textbf{Dinding Memori MITM:} Horowitz--Sahni \cite{horowitz1974computing} membagi $A$ menjadi dua bagian berukuran $\lfloor N/2 \rfloor$ dan $\lceil N/2 \rceil$, menghasilkan, mengurutkan, dan mencocokkan $2^{N/2}$ jumlah parsial dalam waktu dan ruang $\mathcal{O}(2^{N/2})$. Untuk $N \ge 50$, $2^{25} \approx 3{,}36 \times 10^7$ entri melampaui ukuran \textit{cache} L3 CPU umumnya ($16$--$64$\,MB pada komputer komoditas), memicu \textit{cache thrashing} dan tekanan TLB. Schroeppel dan Shamir \cite{schroeppel1981t} mereduksi ruang menjadi $\mathcal{O}(2^{N/4})$ dengan kompensasi *overhead* antrean prioritas.
+    \item \textbf{Dinding Besaran Target:} DP Bellman sangat efisien saat $T$ berada pada kisaran jutaan, namun tabel DP berukuran $\mathcal{O}(T)$ mustahil dialokasikan saat $T$ mencapai $10^{12}$.
+    \item \textbf{Penalti Ekstraksi Multi-Solusi:} memperoleh $K \gg 1$ saksi berbeda melalui penelusuran ulang pohon \textit{branch-and-bound} secara naif memakan biaya $\mathcal{O}(K \cdot 2^N)$ pada kasus terburuk.
+\end{enumerate}
+
+\subsection{Kontribusi dan Ruang Lingkup}
+Makalah ini mendokumentasikan arsitektur, implementasi, dan karakteristik empiris dari \textsc{Dumb SSP Solver}, yang dibangun menggunakan C++20 murni (\texttt{dumbsspCore.hpp}, antarmuka konsol sinkron \texttt{dumbsspCli.cpp}, dan antarmuka grafis Win32 \texttt{dumbsspGui.cpp}):
+\begin{itemize}
+    \item \textbf{Jalur pra-pemeriksaan deterministik multi-tahap (L0--L2)} yang melakukan penyaringan domain, saringan hambatan FPB/GCD, dan uji kelayakan jendela kardinalitas dalam waktu polinomial sebelum pencarian eksponensial.
+    \item \textbf{\textit{Tail-table} asimetris berbatas memori (L4)} pada $m$ elemen aktif terkecil, mempertahankan ukuran kompak $16{,}00$\,MB yang menetap di dalam \textit{cache} L3 CPU untuk mempercepat evaluasi simpul daun.
+    \item \textbf{Mesin DP bitset paralel-word (L3)}, dengan ambang batas target kecil ($T \le 1{,}5\times10^7$) untuk resolusi saksi tunggal berkecepatan tinggi.
+    \item \textbf{\textit{Zero-Sum Swap Extractor} berderajat hingga (L8)}, menyediakan kerangka kerja polinomial tetap untuk memanen multi-solusi hingga derajat $p \le 4$.
+    \item \textbf{Rangkaian tolok ukur yang dapat direproduksi}: menyediakan dataset per instans yang mandiri serta perintah CLI eksplisit dari $N=5$ hingga $N=100$ dengan target triliunan, yang diarsipkan dalam \texttt{benchmark.txt}.
+\end{itemize}
+
+\subsection{Struktur Makalah}
+Bagian~\ref{sec:preliminaries} menyajikan model formal, teorema reduksi invariansi komplemen, dan metrik densitas informasi. Bagian~\ref{sec:architecture} merinci jalur pra-pemeriksaan L0--L2 dan logika *router* adaptif (Algoritma~\ref{alg:router}). Bagian~\ref{sec:hardware_engineering} membahas DP bitset, mesin *tail-table*, dan *oracle* pemangkas. Bagian~\ref{sec:swap_manifold} memaparkan teori *Zero-Sum Swap* dan kompleksitasnya. Bagian~\ref{sec:experiments} menyajikan evaluasi eksperimental dan instruksi reproduksi. Bagian~\ref{sec:ui_verification} membahas antarmuka pengguna dan verifikator L7. Bagian~\ref{sec:conclusion} menyimpulkan makalah dan menguraikan arah penelitian mendatang.
+
+\section{Preliminari \& Taksonomi Teori Kompleksitas}
+\label{sec:preliminaries}
+
+\subsection{Formulasi Matematis Formal}
+Misalkan $A_{\text{raw}}$ adalah multiset masukan berukuran $N$ yang diberikan oleh pengguna. Penyelesai pertama-tama membangun multiset \emph{aktif}:
+\begin{equation}
+    A = \{\, a \in A_{\text{raw}} : a \neq 0 \ \wedge\ a \le T \,\},
+    \label{eq:active_set}
+\end{equation}
+dengan membuang elemen bernilai nol (karena tidak mengubah jumlah) dan elemen yang lebih besar dari $T$ (karena elemen positif yang melebihi $T$ tidak dapat menjadi bagian dari solusi eksak). Elemen-elemen $A$ kemudian diurutkan menurun: $a_1 \ge a_2 \ge \dots \ge a_n > 0$ dengan $n = |A| \le N$. Jumlah agregat multiset aktif dinyatakan sebagai $\sigma(A) = \sum_{i=1}^{n} a_i$.
+
+\begin{lemma}[Keabsahan Penyaringan Domain]
+\label{lem:filter}
+Untuk setiap $S_{\text{raw}} \subseteq A_{\text{raw}}$ dengan $\sum S_{\text{raw}} = T$: (i) elemen nol dapat ditambahkan atau dihilangkan dari $S_{\text{raw}}$ tanpa mengubah hasil jumlah; (ii) $S_{\text{raw}}$ tidak memuat elemen $a > T$ karena semua elemen bernilai positif.
+\end{lemma}
+\begin{proof}
+(ii) berlaku karena semua elemen bilangan bulat non-negatif; jika $a \in S_{\text{raw}}$ dan $a > T$, maka $\sum S_{\text{raw}} \ge a > T$, bertentangan dengan $\sum S_{\text{raw}} = T$. Poin (i) terbukti langsung dari sifat identitas penjumlahan $0$.
+\end{proof}
+
+Kandidat solusi direpresentasikan sebagai vektor biner $x = (x_1, \dots, x_n) \in \{0,1\}^n$ terhadap multiset aktif, dengan fungsi bobot $f(x) = \sum_{i=1}^n a_i x_i$.
+
+\subsection{Teorema Reduksi Invariansi Komplemen}
+\begin{theorem}[Reduksi Invariansi Komplemen]
+\label{thm:complement}
+Untuk instans aktif $(A,T)$ dengan $T > \tfrac{1}{2}\sigma(A)$ dan $T \le \sigma(A)$, pencarian $x \in \{0,1\}^n$ dengan $\sum_{i=1}^n a_i x_i = T$ ekuivalen dengan mencari komplemen $x' = \mathbf{1}-x$ sedemikian sehingga:
+\begin{equation}
+    \sum_{i=1}^n a_i x'_i = T' = \sigma(A) - T, \qquad T' < \tfrac{1}{2}\sigma(A).
+\end{equation}
+Diberikan saksi tersertifikasi untuk $T'$, solusi $x$ dipulihkan dalam waktu $\mathcal{O}(n)$ melalui $x_i = 1 - x'_i$.
+\end{theorem}
+\begin{proof}
+Misalkan $x'_i = 1-x_i$. Maka $\sum_i a_i x'_i = \sum_i a_i - \sum_i a_i x_i = \sigma(A) - T = T'$. Karena $T > \tfrac12\sigma(A)$, diperoleh $T' = \sigma(A)-T < \tfrac12\sigma(A)$. Arah sebaliknya bersifat simetris, menghasilkan pemetaan bijektif antar kedua himpunan solusi.
+\end{proof}
+Transformasi ini diterapkan pada fungsi \texttt{Instance::normalize()}: nilai \texttt{effective\_target} diatur ke $\sigma(A)-T$ setiap kali $T > \lfloor \sigma(A)/2 \rfloor$ dan $\sigma(A) \ge T$.
+
+\subsection{Densitas Informasi Telemetris}
+Implementasi menghitung skor densitas informasi:
+\begin{equation}
+    d = \frac{n}{\log_2(a_1 + 1)}, \qquad n = |A|,\ a_1 = \max A,
+    \label{eq:density_formula}
+\end{equation}
+serta bendera \texttt{strong\_structure} dari jendela kardinalitas dan FPB.
+
+\begin{remark}[Peran Diagnostik Densitas Informasi]
+\label{rem:density-not-routing}
+Densitas informasi $d$ dan bendera struktur dievaluasi sebagai metrik informatif pada panel telemetri untuk mengkarakterisasi tingkat kesulitan teoritis instans sesuai literatur transisi fase klasik \cite{lagarias1985solving, coster1992improved}. Pemilihan strategi penyelesaian diatur secara deterministik oleh batas memori dan target pada Algoritma~\ref{alg:router}.
+\end{remark}
+
+Sebagai konteks, rezim klasik terbagi menjadi: \textbf{densitas rendah} ($d < 0{,}9408$), di mana instans acak terbukti dapat direduksi dalam waktu polinomial ke pencarian vektor pendek pada kisi $(N{+}1)$-dimensi via algoritma LLL \cite{lagarias1985solving, coster1992improved}; \textbf{densitas kritis} ($d \approx 1$), di mana pencarian eksak secara asimtotik paling sulit; dan \textbf{densitas tinggi} ($d>1{,}2$), di mana prinsip sarang merpati menghasilkan banyak solusi redundan sehingga pemrograman dinamis sangat efektif.
+
+\subsection{Taksonomi Teori Kompleksitas Arsitektur Penyelesai}
+Tabel~\ref{tab:taxonomy} mengklasifikasikan setiap modul penyelesai berdasarkan kompleksitas waktu dan ruang yang diimplementasikan.
+
+\begin{table*}[t]
+\centering
+\caption{Klasifikasi Teori Kompleksitas Arsitektur Penyelesai}
+\label{tab:taxonomy}
+\renewcommand{\arraystretch}{1.3}
+\footnotesize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lllll}
+\hline
+\textbf{Lapisan / Modul} & \textbf{Kelas} & \textbf{Waktu} & \textbf{Ruang} & \textbf{Mekanisme} \\
+\hline
+L0: Filter \& Normalizer & P & $\mathcal{O}(N)$ & $\mathcal{O}(n)$ & Eliminasi nol/elemen berlebih, reduksi komplemen \\
+L1: Saringan FPB/GCD & P & $\mathcal{O}(n \log(\min A_i))$ & $\mathcal{O}(1)$ & $T \not\equiv 0 \!\!\pmod{\gcd(A)} \Rightarrow$ UNSAT \\
+L2: Profiler Kardinalitas & P & $\mathcal{O}(n \log n)$ & $\mathcal{O}(n)$ & Pengurutan, jumlah sufiks, jendela $[k_{\min},k_{\max}]$ \\
+L3: DP Bitset Paralel-Word & Pseudo-P. & $\mathcal{O}(n\, T/64 + T)$ & $\mathcal{O}(T)$ & Pergeseran bit 64-bit; aktif jika $T \le 1{,}5\times10^7$, mode saksi tunggal \\
+L4: Tail-Table Asimetris & Exp. Param. & $\mathcal{O}(m2^{m} + 2^{\,n-m})$ & $\mathcal{O}(2^{m})$ & Tabel pra-komputasi pada $m$ elemen terkecil (Bagian~\ref{sec:hardware_engineering}) \\
+L5a: Pemangkas Batas Sufiks & P & $\mathcal{O}(1)$/simpul & $\mathcal{O}(n)$ & $\text{rem} > \text{suffix}[i] \Rightarrow$ pangkas cabang \\
+L5b: Oracle Kardinalitas Lokal & P & $\mathcal{O}(n{-}i)$/simpul & $\mathcal{O}(n)$ & Pencarian biner + evaluasi ulang $[k_{\min},k_{\max}]$ lokal \\
+L6: Pembatalan Kooperatif & P & $\mathcal{O}(1)$ amort. & $\mathcal{O}(1)$ & Flag atomik, diperiksa tiap $4096$ simpul evaluasi \\
+L7: Verifikator Independen & P & $\mathcal{O}(k)$ & $\mathcal{O}(k)$ & Validasi terisolasi: batas indeks, keunikan, $\sum a_j \stackrel{?}{=} T$ \\
+L8: Ekstraktor Swap Jumlah-Nol & P (derajat tetap) & $\mathcal{O}(k^4\log k + (n{-}k)^4\log k)$ & $\mathcal{O}(k^4 + (n{-}k)^4)$ & Pertukaran $p\le 4$ elemen per sisi (Bagian~\ref{sec:swap_manifold}) \\
+\hline
+\end{tabular}%
+}
+\end{table*}
+
+\section{Jalur Pra-Pemeriksaan dan Router Adaptif}
+\label{sec:architecture}
+
+Penyelesai mengeksekusi tiga lapisan pra-pemeriksaan deterministik terlebih dahulu sebelum *router* menentukan mesin pencarian utama.
+
+\subsection{Lapisan Pra-Pemrosesan, Saringan, dan Profiling (L0--L2)}
+\begin{enumerate}
+    \item \textbf{L0 (Filter \& Normalizer):} membangun $A$ dari $A_{\text{raw}}$ berdasarkan Persamaan~\eqref{eq:active_set}, menghitung $\sigma(A)$, dan menerapkan Teorema~\ref{thm:complement} saat $T > \tfrac12\sigma(A)$.
+    \item \textbf{L1 (Saringan FPB/GCD):} menghitung $g=\gcd(a_1,\dots,a_n)$ dalam waktu $\mathcal{O}(n\log(\min A_i))$.
+    \begin{lemma}[Hambatan Modular]
+    Jika $T \not\equiv 0 \pmod g$, maka tidak ada himpunan bagian $S \subseteq A$ yang berjumlah $T$.
+    \end{lemma}
+    \begin{proof}
+    $\sum_{i\in S} a_i = g\sum_{i\in S}(a_i/g)$ merupakan kelipatan dari $g$ untuk sembarang $S$.
+    \end{proof}
+    \item \textbf{L2 (Profiler Kardinalitas):} mengurutkan $A$ secara menurun, menghitung jumlah sufiks $\text{suffix}[i]=\sum_{j=i}^{n} a_j$, serta menentukan batas jendela kardinalitas:
+    \begin{align}
+        k_{\min} &= \min\Big\{k : \textstyle\sum_{i=1}^k a_i \ge T_{\text{eff}}\Big\}, \\
+        k_{\max} &= \max\Big\{k : \textstyle\sum_{i=n-k+1}^n a_i \le T_{\text{eff}}\Big\},
+    \end{align}
+    di mana $k_{\min}$ adalah jumlah elemen \emph{terbesar} paling sedikit untuk mencapai $T_{\text{eff}}$, dan $k_{\max}$ adalah jumlah elemen \emph{terkecil} terbanyak tanpa melampaui $T_{\text{eff}}$. Jika $k_{\min}>k_{\max}$, instans tersertifikasi UNSAT.
+\end{enumerate}
+
+\subsection{Logika Keputusan Router Adaptif}
+Algoritma~\ref{alg:router} menyajikan logika pemilihan strategi penyelesaian berdasarkan ambang batas memori dan target efektif.
+
+\begin{algorithm}[h]
+\caption{Logika Pemilihan Strategi Router Adaptif}
+\label{alg:router}
+\begin{algorithmic}[1]
+\REQUIRE Multiset aktif $A$, target efektif $T_{\text{eff}}$, anggaran memori $M_{\text{limit}}$ (MB), mode $\mathcal{M}$
+\ENSURE Strategi $\mathcal{S} \in \{\text{TrivialPreCheck}, \text{BitsetDP}, \text{HybridTailTable}\}$
+\IF{$T_{\text{eff}} = 0$}
+    \RETURN $\mathcal{S}\leftarrow$ TrivialPreCheck (solusi himpunan kosong)
+\ENDIF
+\IF{$A=\emptyset$ \OR $T_{\text{eff}} > \sigma(A)$}
+    \RETURN $\mathcal{S}\leftarrow$ TrivialPreCheck (UNSAT: melebihi total jumlah)
+\ENDIF
+\IF{$g>1$ \AND $T_{\text{eff}} \bmod g \neq 0$}
+    \RETURN $\mathcal{S}\leftarrow$ TrivialPreCheck (UNSAT: saringan FPB)
+\ENDIF
+\IF{semua $a_i$ genap \AND $T_{\text{eff}}$ ganjil}
+    \RETURN $\mathcal{S}\leftarrow$ TrivialPreCheck (UNSAT: paritas berlawanan)
+\ENDIF
+\IF{$k_{\min} > k_{\max}$}
+    \RETURN $\mathcal{S}\leftarrow$ TrivialPreCheck (UNSAT: jendela kardinalitas kosong)
+\ENDIF
+\STATE $\text{Mem}_{\text{DP}} \leftarrow \big\lceil (T_{\text{eff}}+1)/64 \big\rceil \times 8 + (T_{\text{eff}}+1)\times 4$
+\IF{$T_{\text{eff}} \le 1{,}5\times 10^{7}$ \AND $\text{Mem}_{\text{DP}} < \tfrac12 M_{\text{limit}}\!\cdot\!2^{20}$ \AND $\mathcal{M} \in \{\text{FindOne}, \text{DecisionOnly}\}$}
+    \RETURN $\mathcal{S}\leftarrow$ BitsetDP \ (Lapisan L3)
+\ELSE
+    \RETURN $\mathcal{S}\leftarrow$ HybridTailTable \ (Lapisan L4--L5)
+\ENDIF
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Mode Operasional yang Didukung}
+\begin{itemize}
+    \item \textbf{FindOne / DecisionOnly:} pencarian langsung kembali begitu kecocokan daun pertama ditemukan melalui flag \texttt{solution\_found}.
+    \item \textbf{FindAll:} setelah saksi pertama ditemukan, jalur utama menyerahkan proses ke ekstraktor L8 untuk memanen saksi tambahan hingga batas \texttt{max\_solutions} (default $5000$).
+    \item \textbf{CountAll:} menghitung total solusi melalui akumulator 128-bit (\texttt{u128 solution\_count}) tanpa mengalokasikan vektor saksi pada setiap solusi tambahan.
+\end{itemize}
+
+\begin{remark}[Skalabilitas Kombinatorial untuk Elemen Bernilai Nol]
+\label{rem:zero-count}
+Elemen bernilai nol ($a_i = 0$) difilter pada tahap L0 untuk menjaga efisiensi pohon pencarian. Pada mode pencacahan, jumlah solusi total pada multiset awal secara aljabar memenuhi $\mathcal{N}(A_{\text{raw}}, T) = 2^Z \cdot \mathcal{N}(A, T)$, dengan $Z$ menyatakan banyaknya elemen bernilai nol.
+\end{remark}
+
+\section{Rekayasa Algoritma Berkesadaran Perangkat Keras}
+\label{sec:hardware_engineering}
+
+\subsection{DP Bitset Paralel-Word 64-Bit (L3)}
+Saat diarahkan ke L3, ketercapaian target disimpan sebagai larik kata $\text{DP}[0..W{-}1]$ berukuran $W=\lceil (T_{\text{eff}}+1)/64\rceil$ kata 64-bit. Untuk setiap elemen $v$, transisi status dilakukan via pergeseran bit multi-word:
+\begin{equation}
+    w_{\text{shift}} = \lfloor v/64\rfloor, \qquad b_{\text{rem}} = v \bmod 64,
+\end{equation}
+\begin{equation}
+    \text{DP}'[w] = \text{DP}[w] \;\lor\; \big(\text{DP}[w-w_{\text{shift}}] \ll b_{\text{rem}}\big) \;\lor\; \big(\text{DP}[w-w_{\text{shift}}-1] \gg (64-b_{\text{rem}})\big).
+    \label{eq:bitset_transition}
+\end{equation}
+Larik \texttt{parent[t]} 32-bit menyimpan jejak indeks elemen untuk merekonstruksi solusi dalam $\mathcal{O}(k)$ langkah.
+
+\subsection{Memoization Tail-Table Asimetris dalam Cache L3 CPU (L4)}
+Pendekatan MITM simetris \cite{horowitz1974computing} membagi $n$ elemen menjadi $50{:}50$. Lapisan L4 sebaliknya melakukan pra-komputasi hanya pada $m$ elemen aktif \emph{terkecil}, di mana nilai $m$ ditentukan oleh:
+\begin{equation}
+    m(n, M_{\text{limit}}) =
+    \begin{cases}
+        0, & n \le 1,\\[2pt]
+        n-1, & 2 \le n \le 20,\\[2pt]
+        \displaystyle \max\Big(12,\ \max\{\, m' \le 20 : 16\cdot 2^{m'} \le \tfrac{M_{\text{limit}}\cdot 2^{20}}{4} \,\}\Big), & n > 20.
+    \end{cases}
+    \label{eq:choose_m}
+\end{equation}
+Pada batas memori default $M_{\text{limit}}=4096$\,MB, nilai $m=20$ untuk semua $n>20$. Tabel $\text{Tail} = \{a_{n-m+1},\dots,a_n\}$ memuat tepat $2^m$ entri pasangan $(\texttt{u64 sum}, \texttt{u32 mask})$ dengan struktur 16-byte:
+\begin{equation}
+    \text{Memori}(\text{Tabel}_{m=20}) = 2^{20}\times 16\text{ byte} = 16{,}777{,}216\text{ byte} = 16{,}00\text{ MB},
+\end{equation}
+yang muat seutuhnya di dalam \textit{cache} L3 CPU modern ($16$--$64$\,MB). Tabel diisi dengan mengevaluasi kombinasi bit $2^m$ dalam waktu $\mathcal{O}(m\,2^m)$ dan diurutkan dalam $\mathcal{O}(2^m\log 2^m)$ untuk pencarian biner cepat.
+
+\subsection{Pemangkasan Sufiks dan Kardinalitas pada DFS (L5)}
+Dua pemeriksaan pemangkasan berjalan di setiap simpul DFS $(i,\text{rem})$:
+\begin{itemize}
+    \item \textbf{L5a (Batas Sufiks, $\mathcal{O}(1)$):} jika $\text{rem} > \text{suffix}[i] = \sum_{j=i}^{n} a_j$, seluruh sub-pohon langsung dipangkas.
+    \item \textbf{L5b (Oracle Kardinalitas Lokal):} melakukan pencarian biner elemen terbesar yang valid, memeriksa ketersediaan elemen minimal, dan membangun jendela kardinalitas lokal $[k_{\min}^{(i)}, k_{\max}^{(i)}]$ dalam waktu $\mathcal{O}(n-i) = \mathcal{O}(N)$.
+\end{itemize}
+
+\subsection{Pembatalan Kooperatif dan Titik Batas Waktu (L6)}
+\label{sec:l6-cancellation}
+Kontrol eksekusi disediakan oleh Lapisan L6 melalui flag atomik tunggal (\texttt{std::atomic<bool> stop\_flag}). Pencarian DFS memeriksa flag ini setiap $4096$ simpul terhadap batas waktu (\texttt{time\_limit\_ms}). GUI (\texttt{dumbsspGui.cpp}) menjalankan pencarian pada satu \texttt{std::thread} terdedikasi agar antarmuka tidak membeku, sedangkan CLI (\texttt{dumbsspCli.cpp}) berjalan murni sinkron dan \textit{single-threaded} untuk memastikan determinisme dan bebas *jitter*.
+
+\section{Ekstraktor Swap Jumlah-Nol Berderajat Hingga}
+\label{sec:swap_manifold}
+
+\subsection{Fondasi Teoretis}
+Misalkan $S_0\subseteq\{1,\dots,n\}$ adalah saksi awal dengan $\sum_{i\in S_0}a_i=T_{\text{eff}}$, $U\subset S_0$ adalah himpunan bagian yang dikeluarkan, dan $V\subset(\{1,\dots,n\}\setminus S_0)$ adalah himpunan bagian yang dimasukkan, menghasilkan $S' = (S_0\setminus U)\cup V$.
+
+\begin{theorem}[Invariansi Delta Jumlah-Nol]
+\label{thm:zero_sum}
+$S'$ adalah solusi eksak yang valid jika dan hanya jika $\Delta(U,V) = \sum_{v\in V}a_v - \sum_{u\in U}a_u = 0$.
+\end{theorem}
+\begin{proof}
+$\sum_{j\in S'}a_j = \big(\sum_{j\in S_0}a_j - \sum_{u\in U}a_u\big) + \sum_{v\in V}a_v = T_{\text{eff}} + \Delta(U,V)$, yang tepat sama dengan $T_{\text{eff}}$ jika dan hanya jika $\Delta(U,V)=0$.
+\end{proof}
+
+\begin{theorem}[Jarak Hamming Genap]
+\label{thm:hamming}
+Jika $|U|=|V|=p$, jarak Hamming antara vektor indikator $S_0$ dan $S'$ adalah $d_H = |U|+|V| = 2p$.
+\end{theorem}
+
+\subsection{Ekstraksi Perturbasi Berderajat Hingga ($p \le 4$)}
+Ekstraktor Swap Jumlah-Nol (\texttt{ZeroSumSwapExtractor::extract}) mengeksplorasi substitusi elemen hingga derajat $p \le 4$ pada himpunan internal $S_{\text{in}} = S_0$ dan himpunan eksternal $S_{\text{out}} = A \setminus S_0$:
+\begin{enumerate}
+    \item Menghitung semua $U\subset S_0$ dengan $1\le|U|\le4$: menghasilkan $\Theta(k^4)$ kombinasi, diurutkan dalam waktu $\Theta(k^4\log k)$.
+    \item Menghitung semua $V\subset S_{\text{out}}$ dengan $1\le|V|\le4$ ($\Theta((n-k)^4)$ kombinasi); untuk setiap $V$, dilakukan pencarian biner pada larik $U$ terurut untuk menemukan $\sum V = \sum U$ dalam waktu $\mathcal{O}(\log k)$ per pengujian.
+\end{enumerate}
+Total kompleksitas ekstraksi adalah
+\begin{equation}
+    \mathcal{O}\big(k^4\log k \;+\; (n-k)^4\log k\big),
+\end{equation}
+yang merupakan prosedur polinomial berderajat tetap dalam kelas P.
+
+\section{Evaluasi Eksperimental yang Dapat Direproduksi}
+\label{sec:experiments}
+
+Evaluasi eksperimental didasarkan pada transkrip uji mandiri 20 instans yang diarsipkan pada \texttt{benchmark.txt}, mencakup ukuran $N=5,10,15,\dots,100$ dengan target berskala triliun pada mode \texttt{FindOne} dan diverifikasi ulang secara independen oleh Lapisan L7. Setiap baris pada Tabel~\ref{tab:selftest} dapat direproduksi langsung menggunakan \texttt{dumbsspCli.exe}.
+
+\subsection{Platform Pengujian Perangkat Keras}
+Seluruh tolok ukur diukur pada komputer laptop berbiaya rendah dengan konfigurasi sistem sebagai berikut:
+\begin{itemize}
+    \item \textbf{Model Sistem:} Acer Aspire A314-35 (BIOS v1.09 UEFI).
+    \item \textbf{Prosesor (CPU):} Intel(R) Celeron(R) N5100 @ 1.10\,GHz (4 core, 4 thread, 4\,MB L3 cache, TDP 6\,W).
+    \item \textbf{Memori Sistem (RAM):} 8192\,MB (8{,}0\,GB) DDR4 RAM.
+    \item \textbf{Sistem Operasi:} Microsoft Windows 11 Pro 64-bit (Build 26200).
+    \item \textbf{Model Kompilasi \& Eksekusi:} MinGW-w64 GCC (\texttt{-O3 -std=c++17}), berjalan secara murni \textbf{single-threaded} sinkron via \texttt{dumbsspCli.exe}.
+\end{itemize}
+
+\subsection{Instruksi Reproduksi}
+\label{sec:repro}
+Reproduksi seluruh klaim kuantitatif dapat dilakukan via antarmuka baris perintah (\texttt{dumbsspCli.exe}):
+\begin{verbatim}
+dumbsspCli.exe "a_1, a_2, ..., a_N" T [findone|findall|count|decision]
+\end{verbatim}
+Contoh untuk baris $N=20$:
+\begin{verbatim}
+dumbsspCli.exe "879273641953, 844911863763, 148075117490, ...,
+998161222768" 3972117833710 findone
+\end{verbatim}
+
+\begin{table}[h]
+\centering
+\caption{Hasil Uji Mandiri: \texttt{FindOne} pada Instans Acak Target Triliunan (Sumber: \texttt{benchmark.txt})}
+\label{tab:selftest}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{cccc}
+\hline
+$N$ & Ukuran Saksi $k$ & Waktu Eksekusi & Verifikator L7 \\
+\hline
+5   & 2  & $0{,}028$\,ms  & OK \\
+10  & 3  & $0{,}053$\,ms  & OK \\
+15  & 5  & $2{,}210$\,ms  & OK \\
+20  & 6  & $83{,}889$\,ms & OK \\
+25  & 8  & $250{,}305$\,ms & OK \\
+30  & 10 & $395{,}859$\,ms & OK \\
+35  & 11 & $317{,}753$\,ms & OK \\
+40  & 13 & $477{,}693$\,ms & OK \\
+45  & 15 & $207{,}076$\,ms & OK \\
+50  & 15 & $919{,}937$\,ms & OK \\
+55  & 21 & $4{,}208$\,s   & OK \\
+60  & 20 & $4{,}219$\,s   & OK \\
+65  & 19 & $15{,}752$\,s  & OK \\
+70  & 24 & $2{,}953$\,s   & OK \\
+75  & 23 & $7{,}142$\,s   & OK \\
+80  & 20 & $1{,}397$\,s   & OK \\
+85  & 25 & $26{,}898$\,s  & OK \\
+90  & 27 & $5{,}297$\,s   & OK \\
+95  & 27 & $4{,}846$\,s   & OK \\
+100 & 28 & $17{,}800$\,s  & OK \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Diskusi Hasil}
+Seluruh 20 instans berhasil diselesaikan dan lolos validasi independen L7. Terlihat bahwa seluruh instans menggunakan jalur L4 karena target berskala triliun melampaui batas $1{,}5\times10^7$ pada L3. Variasi waktu eksekusi dipengaruhi oleh efektivitas pemangkasan L5a/L5b pada struktur angka acak tiap instans.
+
+\subsection{Perbandingan Kualitatif dengan Metode Klasik}
+Tabel~\ref{tab:comparison} menyajikan perbandingan paradigma penyelesaian subset sum berdasarkan literatur komputasi.
+
+\begin{table*}[t]
+\centering
+\caption{Perbandingan Kualitatif Paradigma Penyelesaian Subset Sum}
+\label{tab:comparison}
+\renewcommand{\arraystretch}{1.3}
+\footnotesize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llllll}
+\hline
+\textbf{Paradigma} & \textbf{Waktu} & \textbf{Memori} & \textbf{Perilaku, $N\ge50$} & \textbf{Perilaku, $T>10^{12}$} & \textbf{Multi-Solusi} \\
+\hline
+Horowitz--Sahni (1974) & $\mathcal{O}(2^{N/2})$ & $\mathcal{O}(2^{N/2})$ ($>1$\,GB) & Cache thrashing & Independen target & $\mathcal{O}(K\cdot2^{N/2})$ \\
+Pisinger \texttt{minknap} (1997) & Pseudo-P. & $\mathcal{O}(N\cdot T)$ & Cepat jika $T$ kecil & Gagal/OOM jika $T>10^9$ & Saksi tunggal \\
+DP Bitset Standar & $\mathcal{O}(N\cdot T)$ & $\mathcal{O}(T)$ & Cepat jika $T$ kecil & Gagal/OOM & Backtrack penuh \\
+\textbf{Karya ini (Router L3/L4)} & Adaptif (P / pseudo-P / $2^{n-m}$) & $\le16$\,MB tabel $+\,\mathcal{O}(n)$ & $0{,}028$\,ms--$26{,}9$\,s (Tabel~\ref{tab:selftest}) & Jalur L4 independen $T$ & L8: $\mathcal{O}(k^4\log k{+}(n{-}k)^4\log k)$ \\
+\hline
+\end{tabular}%
+}
+\end{table*}
+
+\section{Antarmuka Pengguna \& Verifikasi Independen}
+\label{sec:ui_verification}
+
+\subsection{Arsitektur Antarmuka Pengguna}
+Penyelesai menyediakan dua antarmuka: antarmuka grafis Win32 (\texttt{dumbsspGui.cpp}) untuk visualisasi langsung dan pemantauan telemetri; serta antarmuka konsol (\texttt{dumbsspCli.exe}) untuk pengujian tolok ukur saintifik presisi tinggi bebas beban tampilan jendela.
+
+\subsection{Verifikator Black-Box Independen L7}
+Lapisan L7 (\texttt{verify\_witness\_independently}) berjalan di luar mesin pencarian. Menggunakan akumulasi 128-bit, L7 memverifikasi: (i) indeks berada dalam rentang $[0,N)$; (ii) tidak ada indeks yang berulang; (iii) nilai elemen cocok dengan $A_{\text{raw}}$; dan (iv) jumlah total tepat sama dengan $T$.
+
+\section{Kesimpulan \& Penelitian Masa Depan}
+\label{sec:conclusion}
+
+Kami telah memaparkan \textsc{Dumb SSP Solver}, arsitektur penyelesai eksak multi-paradigma yang menggabungkan memoization tail-table asimetris berbatas memori (L4, $16{,}00$\,MB di dalam cache L3), DP bitset paralel-word (L3), pemangkasan sufiks dan kardinalitas (L5a/L5b), titik batas pembatalan kooperatif (L6), verifikasi independen (L7), dan ekstraktor swap jumlah-nol derajat hingga (L8). Arsitektur ini berhasil menyelesaikan instans acak dengan target triliunan hingga ukuran $N=100$ pada laptop komoditas dengan konsumsi RAM rendah ($\le 21$\,MB).
+
+Dari sudut pandang praktis, kemampuan menyelesaikan subset sum berskala triliun dalam hitungan detik dengan jejak memori terkendali berpotensi bermanfaat dalam kriptanalisis (evaluasi kriptosistem berbasis knapsack, kalibrasi asumsi kekerasan kisi), protokol *zero-knowledge proof*, alokasi sumber daya komputasi awan (*bin packing*), serta rekonsiliasi transaksi keuangan.
+
+Agenda penelitian masa depan mencakup:
+\begin{itemize}
+    \item \textbf{Paralelisasi multi-core:} menerapkan pencarian DFS terdistribusi pada arsitektur CPU banyak-inti.
+    \item \textbf{Integrasi reduksi kisi:} menggabungkan algoritma LLL/BKZ untuk kasus densitas rendah ($d < 0{,}9408$).
+    \item \textbf{Sintesis tail-table Gray-code:} membangun tabel secara inkremental untuk mereduksi inisialisasi tabel ke $\mathcal{O}(2^m)$.
+    \item \textbf{Skalabilitas kombinatorial otomatis:} ekspansi faktor $2^Z$ langsung pada evaluasi *batch* otomatis.
+\end{itemize}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

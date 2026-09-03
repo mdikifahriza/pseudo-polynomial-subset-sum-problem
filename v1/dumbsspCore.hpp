@@ -1,24 +1,3 @@
-// dumbsspCore.hpp
-//
-// Adaptive Exact Subset-Sum Solver — Unified High-Performance Architecture
-// =========================================================================
-// Arsitektur Inti Terintegrasi:
-//
-//   L0  Instance Normalizer      - filter nol, komplemen dual simetri, sort descending
-//   L1  Structural Profiler      - bounds kardinalitas k_min..k_max, density, sinyal struktur
-//   L2  Trivial/Analytic Check   - obstruksi GCD, paritas, kardinalitas kosong (O(n), instan)
-//   L3  Bitset DP                - fast path AVX bitset untuk target kecil (T <= 1.5e7, ~1-5 ms)
-//   L4  Hybrid Tail-Table Engine - ENGINE UTAMA UNTUK SEMUA SKALA & TARGET BESAR
-//                                  (adaptif m-tail table + O(1) cardinality-pruned DFS).
-//                                  Memori konstan <= 16 MB, throughput 12-15 Juta node/detik.
-//                                  Terbukti empiris: N=80 Target 18.6 Triliun selesai dalam ~4 detik.
-//   L7  Independent Verifier     - verifikasi independen solusi terhadap array mentah asli
-//   L8  Zero-Sum Swap Extractor  - ekstraksi instan ratusan variasi solusi untuk mode FindAll
-//
-// Prinsip desain utama:
-//   "Structure-aware beats Big-O" - Memprioritaskan pruning batas kardinalitas lokal/global
-//   dan pemrosesan di CPU L3 cache dengan memori konstan 16 MB tanpa risiko Out-Of-Memory.
-//
 #pragma once
 
 #include <vector>
@@ -33,6 +12,7 @@
 #include <atomic>
 #include <random>
 #include <unordered_set>
+#include <set>
 
 #if defined(_WIN32) || defined(_WIN64)
 #define WIN32_LEAN_AND_MEAN
@@ -50,10 +30,6 @@ using u128 = unsigned __int128;
 static const u128 INF128 = ~((u128)0);
 static const u64  INF64  = 0xFFFFFFFFFFFFFFFFULL;
 
-// =============================================================================
-// UTILITAS: PENGUKURAN RAM LINTAS PLATFORM (perbaikan dari versi lama yang
-// selalu return 0 di Linux/Mac - sekarang beneran jalan di POSIX via getrusage)
-// =============================================================================
 inline size_t get_current_peak_ram_bytes() {
 #if defined(_WIN32) || defined(_WIN64)
     PROCESS_MEMORY_COUNTERS pmc;
@@ -67,18 +43,15 @@ inline size_t get_current_peak_ram_bytes() {
     struct rusage ru;
     if (getrusage(RUSAGE_SELF, &ru) == 0) {
 #if defined(__APPLE__)
-        return (size_t)ru.ru_maxrss;           // macOS: bytes
+        return (size_t)ru.ru_maxrss;
 #else
-        return (size_t)ru.ru_maxrss * 1024ULL; // Linux: kilobytes
+        return (size_t)ru.ru_maxrss * 1024ULL;
 #endif
     }
     return 0;
 #endif
 }
 
-// =============================================================================
-// ENUM DEFINISI
-// =============================================================================
 enum class SolveMode { FindOne, FindAll, CountAll, DecisionOnly };
 
 enum class SolverStatus {
@@ -92,13 +65,10 @@ enum class SolverStatus {
 
 enum class OracleFeasibility { Infeasible, Feasible, Possible };
 
-// StrategyType — direvisi total dari versi lama:
-//   - TSEH1/TSEH2/TSEH_Reduced_SS (dead code lama) DIHAPUS, digantikan satu
-//     engine tunggal yang matang: HybridTailTable.
 enum class StrategyType {
     TrivialPreCheck,
     BitsetDP,
-    HybridTailTable     // ENGINE UTAMA untuk semua kasus skala menengah & besar
+    HybridTailTable
 };
 
 inline std::string strategy_to_string(StrategyType st) {
@@ -113,15 +83,11 @@ inline std::string strategy_to_string(StrategyType st) {
 struct SolverBudget {
     double time_limit_ms      = 120000.0;
     size_t memory_limit_mb    = 4096;
-    size_t max_solutions      = 5000;   // batas witness FindAll
+    size_t max_solutions      = 5000;
     size_t max_display_solutions = 200;
-    bool   exhaustive_find_all   = false; // false = zero-sum swap (cepat, non-exhaustive)
-                                           // true  = DFS penuh tanpa early-return (mahal, lengkap)
+    bool   exhaustive_find_all   = false;
 };
 
-// =============================================================================
-// STRUKTUR DATA
-// =============================================================================
 struct Element {
     u64 val = 0;
     int orig_idx = 0;
@@ -149,14 +115,11 @@ struct SolutionWitness {
     bool operator<(const SolutionWitness& o) const { return original_indices < o.original_indices; }
 };
 
-// =============================================================================
-// L0 + L1: INSTANCE NORMALIZER & STRUCTURAL PROFILER
-// =============================================================================
 struct Instance {
     std::vector<u64> raw_elements;
     u64 target = 0;
 
-    std::vector<Element> A;            // elemen positif aktif, sorted descending
+    std::vector<Element> A;
     std::vector<int> zero_indices;
 
     u64 normalized_target = 0;
@@ -169,13 +132,9 @@ struct Instance {
     int odd_count = 0, even_count = 0, unique_count = 0;
     double density = 0.0;
 
-    // L1: batas kardinalitas eksak [k_min, k_max] via suffix sum, O(n)
     int k_min = -1, k_max = -1;
     int feasible_k_count = 0;
 
-    // L1: apakah instance ini "berstruktur kuat" -> sinyal seberapa efektif pruning
-    // DFS akan bekerja di L4 (Hybrid Tail-Table). Murni informasional/diagnostik -
-    // tidak mengubah strategi yang dipilih (HybridTailTable menangani semua skala).
     bool strong_structure = false;
 
     void normalize() {
@@ -206,8 +165,6 @@ struct Instance {
 
         if (max_val > 0 && !A.empty()) density = (double)A.size() / std::log2((double)max_val + 1.0);
 
-        // Reduksi komplemen (Sifat 1): kalau target > total/2, cari komplemennya -
-        // ruang pencarian lebih kecil karena komplemen lebih dekat ke 0.
         normalized_target = target;
         if (normalized_target > (u64)(total_sum / 2) && total_sum >= normalized_target) {
             effective_target = (u64)(total_sum - normalized_target);
@@ -240,10 +197,6 @@ struct Instance {
         feasible_k_count = (k_min != -1 && k_max != -1 && k_max >= k_min) ? (k_max - k_min + 1) : 0;
     }
 
-    // Sinyal struktur kuat: window kardinalitas sempit relatif ke n, atau
-    // GCD non-trivial, atau parity-forced, atau superincreasing parsial.
-    // Semua sinyal ini adalah kondisi di mana pruning DFS (oracle) akan
-    // sangat efektif memotong cabang - jadi HybridTailTable akan menang.
     void detect_strong_structure() {
         strong_structure = false;
         if (A.empty()) return;
@@ -278,10 +231,6 @@ struct Instance {
     }
 };
 
-// =============================================================================
-// L2: ORACLE KELAYAKAN KARDINALITAS (O(log n) per panggilan via binary search)
-// Dipakai bersama oleh HybridTailTable & sebagai filter tambahan SS.
-// =============================================================================
 inline bool is_cardinality_feasible(int i, u64 R, int n,
                                      const std::vector<u128>& suffix_sum,
                                      const std::vector<Element>& A) {
@@ -316,9 +265,6 @@ inline bool is_cardinality_feasible(int i, u64 R, int n,
     return (k_max >= k_min);
 }
 
-// =============================================================================
-// STATISTIK EKSEKUSI
-// =============================================================================
 struct ExecutionStats {
     StrategyType strategy_chosen = StrategyType::HybridTailTable;
     SolverStatus status = SolverStatus::ExactUnsatProven;
@@ -337,24 +283,18 @@ struct ExecutionStats {
     u64 heap_operations = 0, comparisons = 0;
     u64 table_lookups = 0;
 
-    // L7: hasil verifikasi independen - WAJIB dicek sebelum solusi dipercaya
     bool verified = false;
     std::string verification_message;
 
     std::string message;
 };
 
-// =============================================================================
-// L7: VERIFIKASI INDEPENDEN
-// Beroperasi TERPISAH dari jalur solve() - tidak boleh mempercayai state
-// internal solver manapun. Hanya melihat raw_elements + target + witness.
-// =============================================================================
 inline bool verify_witness_independently(const std::vector<u64>& raw_elements,
                                           u64 target,
                                           const SolutionWitness& wit,
                                           std::string& out_message) {
     if (wit.original_indices.size() != wit.values.size()) {
-        out_message = "GAGAL: jumlah indeks dan nilai tidak sama.";
+        out_message = "FAIL: index count and value count do not match.";
         return false;
     }
     std::unordered_set<int> seen;
@@ -362,35 +302,29 @@ inline bool verify_witness_independently(const std::vector<u64>& raw_elements,
     for (size_t i = 0; i < wit.original_indices.size(); ++i) {
         int idx = wit.original_indices[i];
         if (idx < 0 || idx >= (int)raw_elements.size()) {
-            out_message = "GAGAL: indeks di luar rentang array asli.";
+            out_message = "FAIL: index out of range of raw array.";
             return false;
         }
         if (!seen.insert(idx).second) {
-            out_message = "GAGAL: indeks duplikat (elemen dipakai lebih dari sekali).";
+            out_message = "FAIL: duplicate index (element used more than once).";
             return false;
         }
         if (raw_elements[idx] != wit.values[i]) {
-            out_message = "GAGAL: nilai tidak cocok dengan array asli pada indeks tsb.";
+            out_message = "FAIL: value does not match raw array at the specified index.";
             return false;
         }
         sum += wit.values[i];
     }
     if ((u64)sum != target) {
         std::ostringstream oss;
-        oss << "GAGAL: sum=" << (u64)sum << " != target=" << target;
+        oss << "FAIL: sum=" << (u64)sum << " != target=" << target;
         out_message = oss.str();
         return false;
     }
-    out_message = "OK: sum tervalidasi = target, semua elemen unik dan berasal dari array asli.";
+    out_message = "OK: sum validated == target, all elements unique and strictly from original array.";
     return true;
 }
 
-// =============================================================================
-// L1: STRATEGY SELECTOR
-// Router analitik murah berbasis profiler L1 (target=0, GCD, paritas, kardinalitas,
-// lalu ambang memori untuk BitsetDP). Selain itu selalu jatuh ke HybridTailTable,
-// yang menangani seluruh skala N dan target secara adaptif.
-// =============================================================================
 class AdaptiveStrategySelector {
 public:
     static u64 estimate_bitset_memory(const Instance& inst) {
@@ -400,10 +334,9 @@ public:
     }
     static u64 estimate_hybrid_memory(int n, int m) {
         (void)n;
-        return (1ULL << m) * sizeof(u64) * 2; // table entries (sum+mask, sebelum & sesudah sort in-place aman)
+        return (1ULL << m) * sizeof(u64) * 2;
     }
 
-    // Tahap 1: keputusan analitik murah, berbasis sinyal struktural dari L1.
     static StrategyType select(const Instance& inst, const SolverBudget& budget, SolveMode mode) {
         u64 mem_budget = budget.memory_limit_mb * 1024ULL * 1024ULL;
 
@@ -419,23 +352,15 @@ public:
             return StrategyType::BitsetDP;
         }
 
-        // Jalur Utama: Hybrid Tail-Table Engine menangani seluruh skala N dan target besar
         return StrategyType::HybridTailTable;
     }
 };
 
-// =============================================================================
-// L4: HYBRID TAIL-TABLE ENGINE (FLAGSHIP)
-// Precompute m elemen "ekor" (nilai terkecil, setelah sort descending) jadi
-// tabel 2^m subset sum, di-sort, di-lookup via binary search di tiap leaf DFS.
-// n-m elemen sisanya di-DFS take/skip dengan oracle pruning (suffix bound +
-// cardinality feasibility). Terbukti empiris: n=80 -> ~1.9 detik, 59 juta node.
-// =============================================================================
 class HybridTailTableEngine {
 public:
     static int choose_m(int n, size_t memory_limit_mb) {
         if (n <= 1) return 0;
-        if (n <= 20) return n - 1; // Adaptif & instan untuk n kecil (< 1 ms)
+        if (n <= 20) return n - 1;
         int m = 20;
         u64 budget_bytes = memory_limit_mb * 1024ULL * 1024ULL / 4;
         while (m > 12 && ((1ULL << m) * 16ULL) > budget_bytes) m--;
@@ -458,7 +383,6 @@ public:
         std::vector<u128> suffix(n + 1, 0);
         for (int i = n - 1; i >= 0; --i) suffix[i] = suffix[i+1] + A[i].val;
 
-        // Precompute tabel subset-sum untuk m elemen ekor
         struct Entry { u64 sum; u32 mask; bool operator<(const Entry& o) const { return sum < o.sum; } };
         std::vector<Entry> table;
         table.reserve((size_t)1 << m);
@@ -499,7 +423,7 @@ public:
                 return;
             }
             stats.states_evaluated++;
-            if ((stats.states_evaluated & 4095) == 0) {
+            if (budget.time_limit_ms > 0.0 && (stats.states_evaluated & 4095) == 0) {
                 auto now = std::chrono::steady_clock::now();
                 double el = std::chrono::duration<double, std::milli>(now - start_time).count();
                 if (el > budget.time_limit_ms) {
@@ -519,7 +443,6 @@ public:
                 return;
             }
             if (i >= cutoff) {
-                // Lookup di tail-table via binary search (equal_range)
                 stats.table_lookups++;
                 Entry dummy{rem, 0};
                 auto bounds = std::equal_range(table.begin(), table.end(), dummy);
@@ -548,13 +471,10 @@ public:
                 return;
             }
 
-            // Pruning 1: suffix-sum bound O(1)
             if ((u128)rem > suffix[i]) { stats.states_pruned++; return; }
-            // Pruning 2: global cardinality bounds O(1) fast-path
             if ((k_used + (n - i)) < inst.k_min || (inst.k_max > 0 && k_used > inst.k_max)) {
                 stats.states_pruned++; return;
             }
-            // Pruning 3: local cardinality feasibility (oracle)
             stats.oracle_calls++;
             if (!is_cardinality_feasible(i, rem, n, suffix, A)) { stats.oracle_pruned++; stats.states_pruned++; return; }
 
@@ -571,28 +491,23 @@ public:
 
         dfs(dfs, 0, T, 0);
         if (stats.status == SolverStatus::UnknownTimeout) {
-            stats.message = "Pencarian dihentikan karena batas waktu (Timeout).";
+            stats.message = "Search stopped due to time limit (Timeout).";
         } else if (stats.has_solution) {
-            stats.message = "Solusi eksak ditemukan via Hybrid Tail-Table Engine.";
+            stats.message = "Exact solution found via Hybrid Tail-Table Engine.";
         } else {
-            stats.message = "UNSAT terbukti eksak via Hybrid Tail-Table Engine.";
+            stats.message = "UNSAT provably proven via Hybrid Tail-Table Engine.";
         }
     }
 };
 
-// =============================================================================
-// L8: ZERO-SUM SWAP EXTRACTOR
-// PENTING: metode ini VALID (setiap solusi hasil tukar tetap sum==target
-// secara matematis) tapi TIDAK EXHAUSTIVE - hanya menjelajahi solusi
-// berjarak <=4 elemen tukar dari sample_solution. Jangan dipakai untuk
-// klaim "menemukan SEMUA solusi" - gunakan budget.exhaustive_find_all=true
-// (DFS penuh) untuk itu, dengan konsekuensi biaya jauh lebih mahal.
-// =============================================================================
 class ZeroSumSwapExtractor {
 public:
     void extract(const Instance& inst, ExecutionStats& stats, const SolverBudget& budget) {
         if (!stats.has_solution || stats.sample_solution.original_indices.empty()) return;
+
+        std::set<std::vector<int>> seen;
         if (stats.all_solutions.empty()) stats.all_solutions.push_back(stats.sample_solution);
+        for (const auto& w : stats.all_solutions) seen.insert(w.original_indices);
 
         std::vector<Element> S_in, S_out;
         std::unordered_set<int> in_set(stats.sample_solution.original_indices.begin(),
@@ -622,6 +537,7 @@ public:
                     for (int k = 0; k < n_in; ++k) if (!((it->mask>>k)&1)) { wit.original_indices.push_back(S_in[k].orig_idx); wit.values.push_back(S_in[k].val); }
                     for (int k = 0; k < n_out; ++k) if ((cmask>>k)&1) { wit.original_indices.push_back(S_out[k].orig_idx); wit.values.push_back(S_out[k].val); }
                     wit.sort_indices();
+                    if (!seen.insert(wit.original_indices).second) continue;
                     u128 s = 0; for (u64 v : wit.values) s += v;
                     wit.sum = s;
                     stats.all_solutions.push_back(wit);
@@ -634,32 +550,20 @@ public:
     }
 };
 
-// =============================================================================
-// ORKESTRATOR UTAMA — AdaptiveExactSolver
-// =============================================================================
 class AdaptiveExactSolver {
 public:
     std::atomic<bool> stop_flag{false};
     std::atomic<bool> solution_found{false};
 
 private:
-    // Finalisasi status akhir - dipakai bersama oleh run() & run_forced() supaya
-    // logikanya tidak bisa lagi drift/berbeda seperti sebelumnya (bug: run_forced()
-    // dulu menimpa UnknownTimeout/PartialSolutionCapped tanpa syarat; run() dulu
-    // mengecek stop_flag SEBELUM status, jadi timeout internal salah dilabeli
-    // "StoppedByUser"). stop_flag dipakai bersama oleh 2 sumber berbeda: timeout
-    // internal (engine set stats.status=UnknownTimeout LALU stop_flag=true) dan
-    // pembatalan eksternal dari GUI (cuma stop_flag=true, status tidak disentuh).
-    // Karena itu status internal harus dicek LEBIH DULU sebelum stop_flag dianggap
-    // sebagai pembatalan pengguna.
     static void finalize_status(ExecutionStats& stats, bool stop_flag_value) {
         if (stats.status == SolverStatus::UnknownTimeout ||
             stats.status == SolverStatus::PartialSolutionCapped) {
-            stats.solved = true; // pencarian berhenti oleh limit internal, bukan dibatalkan - tetap "selesai dievaluasi"
+            stats.solved = true;
         } else if (stop_flag_value) {
             stats.status = SolverStatus::StoppedByUser;
             stats.solved = false;
-            stats.message = "Pencarian dihentikan oleh pengguna.";
+            stats.message = "Search stopped by user.";
         } else {
             stats.status = stats.has_solution ? SolverStatus::ExactSolutionFound : SolverStatus::ExactUnsatProven;
             stats.solved = true;
@@ -681,7 +585,6 @@ public:
         ExecutionStats stats;
         auto t0 = std::chrono::steady_clock::now();
 
-        // ---- L2: Trivial check dulu, selalu ----
         stats.strategy_chosen = AdaptiveStrategySelector::select(inst, budget, mode);
         auto t_prep = std::chrono::steady_clock::now();
         stats.preprocess_ms = std::chrono::duration<double, std::milli>(t_prep - t0).count();
@@ -700,7 +603,6 @@ public:
             }
         }
 
-        // ---- L8: ekstraksi solusi tambahan untuk FindAll (kalau bukan exhaustive) ----
         if (mode == SolveMode::FindAll && stats.has_solution && !budget.exhaustive_find_all) {
             ZeroSumSwapExtractor extractor;
             extractor.extract(inst, stats, budget);
@@ -709,7 +611,6 @@ public:
             stats.all_solutions.push_back(stats.sample_solution);
         }
 
-        // ---- Restorasi Komplemen jika Sifat 1 diterapkan ----
         if (inst.complement_applied && stats.has_solution) {
             auto invert_witness = [&](SolutionWitness& wit) {
                 std::vector<bool> in_comp(inst.raw_elements.size(), false);
@@ -734,13 +635,12 @@ public:
             for (auto& w : stats.all_solutions) invert_witness(w);
         }
 
-        // ---- L7: verifikasi independen - WAJIB, dijalankan di luar jalur solve ----
         if (stats.has_solution && !stats.sample_solution.values.empty()) {
             stats.verified = verify_witness_independently(inst.raw_elements, inst.target,
                                                             stats.sample_solution, stats.verification_message);
         } else if (!stats.has_solution) {
-            stats.verified = true; // UNSAT tidak butuh verifikasi witness
-            stats.verification_message = "N/A (UNSAT, tidak ada witness untuk diverifikasi).";
+            stats.verified = true;
+            stats.verification_message = "N/A (UNSAT, no witness to verify).";
         }
 
         auto t_end = std::chrono::steady_clock::now();
@@ -752,7 +652,6 @@ public:
         return stats;
     }
 
-    // Hook testing/manual override: paksa strategi tertentu, lewati router.
     ExecutionStats run_forced(const Instance& inst, SolveMode mode, StrategyType forced,
                                size_t memory_limit_mb = 4096, double time_limit_ms = 120000.0,
                                size_t max_solutions = 5000) {
@@ -784,12 +683,12 @@ private:
         if (inst.target == 0) {
             stats.has_solution = true; stats.solution_count = 1;
             if (mode == SolveMode::FindAll) stats.all_solutions.push_back(SolutionWitness{});
-            stats.message = "Trivial: target=0 (himpunan kosong)."; return;
+            stats.message = "Trivial: target=0 (empty set)."; return;
         }
-        if (inst.A.empty() || inst.effective_target > inst.total_sum) { stats.message = "Trivial UNSAT: target melebihi total sum."; return; }
-        if (inst.gcd_val > 1 && (inst.effective_target % inst.gcd_val != 0)) { stats.message = "Trivial UNSAT: obstruksi GCD."; return; }
-        if (inst.odd_count == 0 && (inst.effective_target % 2 != 0)) { stats.message = "Trivial UNSAT: obstruksi paritas."; return; }
-        if (inst.feasible_k_count == 0) { stats.message = "Trivial UNSAT: batas kardinalitas kosong."; return; }
+        if (inst.A.empty() || inst.effective_target > inst.total_sum) { stats.message = "Trivial UNSAT: target exceeds total sum."; return; }
+        if (inst.gcd_val > 1 && (inst.effective_target % inst.gcd_val != 0)) { stats.message = "Trivial UNSAT: GCD modular obstruction."; return; }
+        if (inst.odd_count == 0 && (inst.effective_target % 2 != 0)) { stats.message = "Trivial UNSAT: parity obstruction."; return; }
+        if (inst.feasible_k_count == 0) { stats.message = "Trivial UNSAT: feasible cardinality window empty."; return; }
     }
 
     void solve_bitset(const Instance& inst, SolveMode mode, ExecutionStats& stats,
@@ -835,17 +734,13 @@ private:
             wit.sort_indices();
             stats.sample_solution = wit;
             if (mode == SolveMode::FindAll) stats.all_solutions.push_back(wit);
-            stats.message = "Solusi eksak ditemukan via Bitset DP.";
+            stats.message = "Exact solution found via Bitset DP.";
         } else {
-            stats.message = "UNSAT terbukti eksak via Bitset DP.";
+            stats.message = "UNSAT provably proven via Bitset DP.";
         }
     }
 };
 
-// =============================================================================
-// PRESET INSTANCE — termasuk instance uji n=80 dari sesi eksperimen
-// (yang terbukti diselesaikan Hybrid Tail-Table dalam ~1.9 detik)
-// =============================================================================
 struct InstancePreset {
     std::string title, category, description;
     int n; u64 target;

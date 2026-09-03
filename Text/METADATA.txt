@@ -1,0 +1,283 @@
+================================================================================
+ARXIV.ORG SUBMISSION METADATA & INSTRUCTIONS
+FOR "DUMB SSP SOLVER"
+================================================================================
+
+1. PAPER METADATA FOR ARXIV WEB SUBMISSION FORM
+--------------------------------------------------------------------------------
+
+Title:
+Dumb Ways to Solve Subset Sum: Exact Single-Threaded Solving at N = 100, T ≈ 1T, Density ≈ 2.51, and Under 50 MB RAM on a Low-Cost Laptop
+
+Authors:
+M. Diki Fahriza
+
+
+--------------------------------------------------------------------------------
+ARXIV CLASSIFICATION
+--------------------------------------------------------------------------------
+
+RECOMMENDED CONFIGURATION
+-------------------------
+
+Archive / Group:
+Computer Science
+
+Primary Subject Class:
+cs.DS — Data Structures and Algorithms
+
+Secondary / Cross-list Categories:
+cs.CC — Computational Complexity
+math.CO — Combinatorics
+cs.DM — Discrete Mathematics
+
+
+RATIONALE
+---------
+
+Primary: cs.DS
+
+The principal contribution is an exact algorithm/solver architecture for
+the Subset Sum Problem, including tail-table memoization, bounded-target
+bitset DP, bounded-degree witness extraction, pruning, and algorithmic
+performance evaluation.
+
+arXiv defines cs.DS as:
+
+"Data Structures and Algorithms"
+
+and states that it covers data structures and analysis of algorithms,
+including ACM F.2.1 and F.2.2 material.
+
+
+Secondary: cs.CC
+
+cs.CC is appropriate because the paper discusses the computational
+complexity of Subset Sum, exact-search complexity, exponential search
+components, memory/time tradeoffs, and complexity characteristics of
+the proposed mechanisms.
+
+arXiv defines cs.CC as Computational Complexity and includes models of
+computation, complexity classes, structural complexity, complexity
+tradeoffs, and upper/lower bounds.
+
+
+Secondary: math.CO
+
+math.CO is appropriate because Subset Sum is a combinatorial optimization
+problem involving finite subsets, combinatorial enumeration, and exact
+subset selection.
+
+arXiv defines math.CO as Combinatorics and explicitly includes discrete
+mathematics, enumeration, combinatorial optimization, and related areas.
+
+
+Secondary: cs.DM
+
+cs.DM may be included because arXiv defines it as Discrete Mathematics,
+covering combinatorics and graph theory.
+
+
+--------------------------------------------------------------------------------
+ALTERNATIVE CLASSIFICATION IF THE SUBMISSION SYSTEM REQUIRES
+THE MATHEMATICS ARCHIVE AS THE PRIMARY ARCHIVE
+--------------------------------------------------------------------------------
+
+Archive / Group:
+Mathematics
+
+Primary Subject Class:
+math.CO — Combinatorics
+
+Secondary / Cross-list Categories:
+cs.DS — Data Structures and Algorithms
+cs.CC — Computational Complexity
+cs.DM — Discrete Mathematics
+
+
+IMPORTANT:
+
+Do NOT select math.OC merely because the algorithm performs optimization.
+
+math.OC is defined by arXiv as Optimization and Control, covering
+operations research, linear programming, control theory, systems theory,
+optimal control, and game theory.
+
+For this paper, math.CO is a more direct mathematical classification
+than math.OC.
+
+
+--------------------------------------------------------------------------------
+MSC CLASSIFICATION
+--------------------------------------------------------------------------------
+
+MSC Classification (MSC 2020):
+
+Primary:
+68W40 — Analysis of algorithms
+
+Secondary:
+68W01 — General topics in the theory of algorithms
+68Q25 — Analysis of algorithms and problem complexity
+90C27 — Combinatorial optimization
+
+OPTIONAL:
+05A18 — Combinatorial identities
+
+NOTE:
+MSC-class is an arXiv field for submissions to the mathematics archive.
+The arXiv metadata format requires classifications to be marked as
+Primary and Secondary where appropriate.
+
+
+--------------------------------------------------------------------------------
+ACM CLASSIFICATION
+--------------------------------------------------------------------------------
+
+ACM Classification:
+
+F.2.2 — Nonnumerical Algorithms and Problems
+
+F.2.2 is particularly relevant because the paper concerns an exact
+algorithm for a combinatorial search problem.
+
+Additional ACM classification may include:
+
+F.2.1 — Numerical Algorithms and Problems
+
+G.2.1 — Combinatorics
+
+Do not use the following as if they were a single ACM code:
+
+"Theory of computation~Design and analysis of algorithms~Dynamic programming~Exact algorithms"
+
+Those are hierarchical ACM CCS concepts/terms rather than the compact
+legacy-style classification syntax expected by arXiv's ACM-class field.
+
+
+--------------------------------------------------------------------------------
+COMMENTS
+--------------------------------------------------------------------------------
+
+Comments:
+
+Pure native C++20 exact solver. Single-threaded CLI front-end
+(dumbsspCli.exe) and Win32 GUI (dumbsspGui.exe). Full benchmark logs
+archived in benchmark.txt.
+
+
+--------------------------------------------------------------------------------
+JOURNAL REFERENCE
+--------------------------------------------------------------------------------
+
+Journal-ref:
+
+[Leave empty unless the paper has already appeared in a journal or
+conference proceedings.]
+
+
+--------------------------------------------------------------------------------
+DOI
+--------------------------------------------------------------------------------
+
+DOI:
+
+[Leave empty unless referring to an external published version of
+the same work.]
+
+
+--------------------------------------------------------------------------------
+REPORT NUMBER
+--------------------------------------------------------------------------------
+
+Report-no:
+
+[Leave empty unless an institution has assigned an official report number.]
+
+
+--------------------------------------------------------------------------------
+LICENSE
+--------------------------------------------------------------------------------
+
+RECOMMENDED:
+
+arXiv.org perpetual, non-exclusive license 1.0
+
+ALTERNATIVE:
+
+CC BY 4.0
+
+IMPORTANT:
+
+Choose the license deliberately. The license selected on arXiv is
+irrevocable for that version and cannot subsequently be changed.
+
+The arXiv perpetual non-exclusive license retains copyright ownership
+with the original copyright holder while granting arXiv limited rights
+to distribute the article.
+
+CC BY 4.0 permits redistribution, remixing, adaptation, and commercial
+use provided attribution is given.
+
+
+--------------------------------------------------------------------------------
+ABSTRACT
+--------------------------------------------------------------------------------
+
+The Subset Sum Problem (SSP) is a foundational NP-complete problem with
+applications in cryptanalysis, integer programming, and combinatorial
+optimization. Practical exact solvers face three recurring bottlenecks:
+symmetric Meet-in-the-Middle (MITM) requires O(2^(N/2)) memory and causes
+severe CPU cache pressure as N grows; classical dynamic programming (DP)
+requires O(T) memory and therefore becomes impractical for trillion-scale
+targets; and extracting many distinct witnesses from a branch-and-bound
+tree can require expensive re-traversal.
+
+This paper documents Dumb SSP Solver, a native C++20 exact solver that
+combines four concrete engineering mechanisms: (1) an asymmetric
+tail-table of the m numerically smallest active elements (m = N-1 for
+N <= 20, otherwise m starts at 20 and is bounded by memory), yielding a
+16.00 MB table at the default m=20 and pruning the last m recursion
+levels via a single sorted-table binary search per leaf; (2) a 64-bit
+word-parallel bitset DP restricted to small effective targets
+(T <= 1.5 * 10^7) and single-witness queries (FindOne/DecisionOnly);
+(3) a bounded-degree Zero-Sum Swap Extractor that harvests additional
+witnesses by exchanging up to p <= 4 elements on each side of a seed
+solution with fixed-degree polynomial complexity
+O(k^4 log k + (N-k)^4 log k); and (4) an independent, isolated
+black-box verifier (L7) that re-checks index bounds, element uniqueness,
+and exact sum equality outside the search engine.
+
+All reported timings are derived from a reproducible single-threaded
+self-test benchmark covering instance sizes N=5 to N=100 with
+trillion-scale targets. The complete benchmark data are archived in
+benchmark.txt and can be independently inspected using dumbsspCli.exe.
+
+
+--------------------------------------------------------------------------------
+INCLUDED FILES
+--------------------------------------------------------------------------------
+
+main.tex
+    Master LaTeX manuscript.
+
+references.bib
+    BibTeX database containing references.
+
+main.bbl
+    Pre-compiled bibliography required for the arXiv automated build,
+    if applicable to the selected submission package.
+
+README_ARXIV_METADATA.txt
+    Submission metadata and classification guide.
+
+benchmark.txt
+    Complete standalone benchmark dataset for N=5 to N=100.
+
+arxiv_submission.zip
+    Ready-to-upload submission package.
+
+
+================================================================================
+END OF ARXIV SUBMISSION METADATA
+================================================================================    
