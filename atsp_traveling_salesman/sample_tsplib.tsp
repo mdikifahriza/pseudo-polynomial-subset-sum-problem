@@ -1,0 +1,12 @@
+NAME: sample5
+TYPE: TSP
+COMMENT: 5-city sample problem for testing
+DIMENSION: 5
+EDGE_WEIGHT_TYPE: EUC_2D
+NODE_COORD_SECTION
+1 0.0 0.0
+2 10.0 0.0
+3 10.0 10.0
+4 0.0 10.0
+5 5.0 15.0
+EOF

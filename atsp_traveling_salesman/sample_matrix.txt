@@ -1,0 +1,8 @@
+# Sample 5x5 Distance Matrix for ATSP
+# Format: row i, column j = distance from city i to city j
+JENIS: MATRIKS
+0    12   29   22   13
+12    0   19   24   20
+29   19    0   15   18
+22   24   15    0   10
+13   20   18   10    0

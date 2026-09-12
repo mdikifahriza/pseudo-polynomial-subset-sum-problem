@@ -1,0 +1,7 @@
+# Sample 2D Coordinates for ATSP (5 cities)
+# Format: x y
+0.0   0.0
+10.0  0.0
+15.0  10.0
+10.0  20.0
+0.0   15.0
